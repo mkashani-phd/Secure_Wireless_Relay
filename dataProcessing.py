@@ -540,7 +540,8 @@ class Utills:
                 for i in range(batch):
                     plt.figure(figsize=(20, 3), dpi=100)
                     absfft= np.abs(IQdata.fft(fftcnt))
-                    plt.plot(np.arange(-IQdata.Fs/2,IQdata.Fs/2,IQdata.Fs//len(absfft)+1) + IQdata.Fc,absfft)
+
+                    plt.plot(np.linspace(-IQdata.Fs/2,IQdata.Fs/2,len(absfft)) + IQdata.Fc,absfft)
                     plt.xlabel("Freq")
                     plt.ylabel("amplitude")
                     plt.title("frame" + str(fftcnt))
