@@ -135,19 +135,27 @@ def simple_rate_match(codeword, E):
         raise ValueError(f"Requested E={E} > mother codeword length={len(codeword)}. "
                          "Implement repetition if needed.")
 
-def pick_bg2_file_for_Z(Z):
-    """
-    Example function returning a BG2 filename 
-    given Z. Adjust to match your actual folder and naming!
-    
-    E.g. if you have files named 'NR_2_7_60.txt', 'NR_2_7_32.txt', etc.
-    """
-    # Suppose all BG2 files start with "NR_2_" and end with f"_{Z}.txt".
-    # You might have different sub-versions. Adjust as needed.
-    # The snippet below is naive.
+def pick_bg1_file_for_Z(Z): 
     base_name = f"NR_1_0_{Z}.txt"  
     full_path = os.path.join("base_matrices", base_name)
     return full_path
+
+def pick_bg2_file_for_Z(Z):
+    base_name = f"NR_1_0_{Z}.txt"  
+    full_path = os.path.join("base_matrices", base_name)
+    return full_path
+
+def find_smallest_Z_for_E(Z_min , Code_rate):
+    Z_chosen = None
+    for z_try in range(Z_min, 1025):  # or some upper bound
+        if Code_rate < 0.3:
+            fname = pick_bg1_file_for_Z(z_try)
+        else:
+            fname = pick_bg2_file_for_Z(z_try)
+        if os.path.isfile(fname):
+            Z_chosen = z_try
+            break
+    return Z_chosen
 
 def generate_5g_codeword_bg2(message_bits, code_rate, pad=1):
     """
@@ -159,35 +167,48 @@ def generate_5g_codeword_bg2(message_bits, code_rate, pad=1):
      5) Rate-matches to produce E bits.
     Returns: codeword of length E (numpy array of 0/1).
     """
-    K = len(message_bits)
-    E = math.ceil(K / code_rate)  # total coded bits we want
 
-    # BG1 typically has "C_bg1 = 46" columns and 'R_bg1 = 68' rows in the base matrix.
+
+    K = len(message_bits)
+    E = math.ceil(K / code_rate)
+    print(f"Desired output length E = {math.ceil(K / code_rate)}, K = {K}")
+
+
+    # BG1 typically has "C_bg1 = 68" columns and 'R_bg1 = 46' rows in the base matrix.
     C_bg1 = 68
-    # BG2 typically has "C_bg2 = 52" columns in the base matrix.
+    # BG2 typically has "C_bg2 = 52" columns and "R_bg2"=  42.
     C_bg2 = 52
 
-    # 1) Find minimal Z so that mother codeword length >= E
-    #    i.e. 52 * Z >= E
-    Z_min = math.ceil(E / C_bg1)
+
+
+    if code_rate < 0.3:
+        # using the BG1 base matrix
+        Z_min = math.ceil(E / C_bg1)
+        Z_chosen = find_smallest_Z_for_E(Z_min, code_rate)
+        print("BG1, Zchose:", Z_chosen, "Z_min*46", Z_chosen*46)
+        base_matrix_file = pick_bg1_file_for_Z(Z_chosen)
+        print(f"Using BG1 file: {base_matrix_file}  (Z={Z_chosen})")
+        
+    else:
+        # using the BG2 base matrix
+        Z_min = math.ceil(E / C_bg2)
+        Z_chosen = find_smallest_Z_for_E(Z_min, code_rate)
+        print("BG2, Zchose:", Z_chosen, "Z_min*42", Z_chosen*42)
+        base_matrix_file = pick_bg2_file_for_Z(Z_chosen)
+        print(f"Using BG2 file: {base_matrix_file}  (Z={Z_chosen})")
 
     # 2) Among your existing files, pick the smallest Z >= Z_min that you actually have
     #    In real code, you'd probably read the directory or keep a sorted list of valid Z's.
     #    We'll just do a brute force upwards from Z_min to some max.
     #    Then pick the first file that exists.
-    Z_chosen = None
-    for z_try in range(Z_min, 1025):  # or some upper bound
-        fname = pick_bg2_file_for_Z(z_try)
-        if os.path.isfile(fname):
-            Z_chosen = z_try
-            break
+
 
     if Z_chosen is None:
         raise FileNotFoundError(f"No valid BG2 file found for Z >= {Z_min}. "
                                 f"Check your base_matrices folder or adjust search range.")
 
-    base_matrix_file = pick_bg2_file_for_Z(Z_chosen)
-    print(f"Using BG2 file: {base_matrix_file}  (Z={Z_chosen})")
+
+
 
     # 3) Create 5G LDPC params from that file
     ldpc_file_design = "msg: "+str(len(message_bits)) + " code_rate: "+str(np.round(code_rate,2))+".txt"

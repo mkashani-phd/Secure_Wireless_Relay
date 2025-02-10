@@ -43,9 +43,10 @@ def test():
     MAC_bits = np.array(hex_to_binary_list(MAC))
 
 
-    payload_bits = cc.generate_5g_codeword_bg2(payload_bits, 1/3)
-    MAC_bits = cc.generate_5g_codeword_bg2(MAC_bits, 1/3)
-    print(payload_bits[0], MAC_bits.shape)
+    payload_bits = cc.generate_5g_codeword_bg2(payload_bits, conf.MSG_CODE_RATE)
+    MAC_bits = cc.generate_5g_codeword_bg2(MAC_bits, conf.MAC_CODE_RATE)
+    print(payload_bits.shape, MAC_bits.shape)
+    
     tx_bits = np.concatenate(
                                 [ 
                                 conf.PREAMBLE ,
