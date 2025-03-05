@@ -89,14 +89,14 @@ class CONFIG:
     def create_default_config(self,default_config_yaml_path = "default_config.yaml"):
         config = {}
         config['MAC_KEY'] = "key"
-        config['FREQ'] = 2.451e9
+        config['FREQ'] = 1.9e9
 
         config['TX_RATE'] = 1e6
         config['TX_GAIN'] = 89.8 
         config['TX_SPS'] = 40
 
         config['RX_RATE'] = 5e6
-        config['RX_GAIN'] = 'agc' # Automatic Gain Control
+        config['RX_GAIN'] = 76 # Automatic Gain Control "agc"
 
         config['LINIENT'] = 10
         config['MIMO'] = False

@@ -11,7 +11,7 @@ def main():
     for i in range(1000):
         t1 = threading.Thread(target=rx)
         t2 = threading.Thread(target=tx)
-
+ 
 
         t2.start()
         time.sleep(.1)

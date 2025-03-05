@@ -89,6 +89,7 @@ class RX:
 
             start = time.time()
             cnt = 4
+            Noise_power = 0
             for i in range(nr_batches):
                 streamer.recv(recv_buffer, metadata)
                 fft = np.abs(np.fft.fft(recv_buffer[0]))
@@ -103,7 +104,13 @@ class RX:
                     recv_buffer[0].tofile(f) 
                     cnt = 0   
                 else:
-                    recv_buffer[0].tofile(f) if (cnt:=cnt+1) < self.conf.LINIENT else np.zeros(batch_size, dtype=np.complex64).tofile(f)
+                    if (cnt:=cnt+1) < self.conf.LINIENT:
+                       recv_buffer[0].tofile(f)  
+                    else:
+                        Noise_power = np.average(np.abs(recv_buffer[0])**2)
+                        np.zeros(10, dtype=np.complex64).tofile(f)
+                        np.array([Noise_power], dtype=np.complex64).tofile(f)
+                        np.zeros(10, dtype=np.complex64).tofile(f)
                 
 
             duration = time.time() - start
@@ -219,11 +226,11 @@ class PostProcessing:
         self.demod = demod
 
         self.IQsamples = np.fromfile(file, np.complex64)
-
-        self.zeroRemover(samples=self.IQsamples,framesIndex=self.frameFinder(self.IQsamples))  
+        framesIndex, self.noise_power = self.frameFinder(samples=self.IQsamples)
+        self.zeroRemover(samples=self.IQsamples,framesIndex=framesIndex)  
 
         self.tindx = np.fromfile(self.file+".tindx", dtype=int, sep= ',')
-        self.TotalFramesIndex = self.frameFinder(self.IQsamples)
+        self.TotalFramesIndex, _ = self.frameFinder(self.IQsamples)
         self.tindx = self.tindx.reshape(-1,2)
 
     def __len__(self):
@@ -239,22 +246,28 @@ class PostProcessing:
 
     def frameFinder(self, samples):
         test_list = np.nonzero(samples)
+        noise_power_avg = 0
+        cnt = 0
         framesIndex = []
         for k, g in groupby(enumerate(test_list[0]), lambda ix: ix[0]-ix[1]):
             temp = list(map(itemgetter(1), g))
-            if len(temp)< self.conf.MIN_FRAME_SIZE:
+            if len(temp)==1:
+                noise_power_avg += np.real(samples[temp[0]])
+                cnt += 1
+                continue
+            elif len(temp)< self.conf.MIN_FRAME_SIZE:
                 continue
             framesIndex.append([temp[0],temp[-1]])
-        return np.array(framesIndex)
+
+        return np.array(framesIndex), noise_power_avg/cnt
 
     def zeroRemover(self, samples, framesIndex):
         f = open(self.file,"wb")
         f_time_index= open(self.file+".tindx","wb")
+
         framesIndex.tofile(f_time_index,sep= ',')
         for i,j in framesIndex:
             frame = samples[i:j]
-            #if len(samples)< thresh:
-                # continue
             frame.tofile(f)
             np.zeros(2,dtype=np.complex64).tofile(f)
 
@@ -324,7 +337,9 @@ class PostProcessing:
             insert_data['mac_hard_decision'] = self.binary_list_to_hex(mac[0:256])
             insert_data['success_verification'] = hmac.new(self.conf.MAC_KEY.encode('utf-8'), msg=insert_data['msg_hard_decision'].encode('utf-8'), digestmod='sha256').hexdigest() == insert_data['mac_hard_decision']
 
-
+            insert_data['noise_power'] = self.noise_power
+            insert_data['Signal_to_Noise_Ratio'] = 10*np.log10((np.average(np.abs(frame)**2) -self.noise_power) /self.noise_power)
+            print("SNR: ", insert_data['Signal_to_Noise_Ratio'])
             insert_data['llr_msg'] = msg_llr
             insert_data['llr_mac'] = mac_llr
 
