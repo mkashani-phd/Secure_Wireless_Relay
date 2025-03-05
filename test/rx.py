@@ -197,7 +197,7 @@ class Demodulation:
             frame, index = self.get_frame(res)
         except:
             print("premable not found!")
-            return None, None
+            return None, None, None, None
         # msg_scale = cc.pick_bg2_file_for_Z()
         # mac_scale = int(1/self.conf.MAC_CODE_RATE)
         llr_msg = llr[index[0]:index[0]+4352]
