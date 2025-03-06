@@ -49,12 +49,15 @@ def test():
     
     tx_bits = np.concatenate(
                                 [ 
+                                [0 for _ in range(1000//conf.TX_SPS)] , # needed for the USRP amplifier to warm up
                                 conf.PREAMBLE ,
                                 list(payload_bits),
-                                MAC_bits,
-                                conf.PREAMBLE[::-1]
+                                # MAC_bits,
+                                conf.PREAMBLE,
+                                [0 for _ in range(1000//conf.TX_SPS)]  # 
                                 ]
                             )
+    # print(tx_bits.tolist())
     fsk_signal = fsk_modulate(tx_bits, conf.TX_SPS)
 
     usrp = uhd.usrp.MultiUSRP("serial=8000169")  # Replace with your USRP's serial or remove parameter for default

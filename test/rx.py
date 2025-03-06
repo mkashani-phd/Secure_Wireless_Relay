@@ -8,6 +8,7 @@ import datetime
 import copy
 import channelCoding as cc
 import hmac
+import bson
 
 
 class RX:
@@ -123,6 +124,12 @@ class RX:
         
 
 
+
+
+
+
+
+
 class Demodulation:
     def __init__(self, conf:config.CONFIG = config.CONFIG()):
         self.conf = conf
@@ -156,54 +163,73 @@ class Demodulation:
             llr.append(self.llr_from_fft(fft))
         return res, llr
 
-    def find_subarray(self, data, sub):
-        n, m = len(data), len(sub)
-        if m == 0:
-            return 0  # Edge case: empty subarray
-        for i in range(n - m + 1):
-            if data[i:i+m] == sub:
-                return i
-        return -1
 
-    def get_frame(self, data, include_markers=False):
-        preamble = self.conf.PREAMBLE
-        postamble = self.conf.PREAMBLE[36::-1]
-        # 1. Find the first occurrence of the preamble.
-        start_idx = self.find_subarray(data, preamble)
-        if start_idx == -1:
-            return None  # Preamble not found
+    def decode_repetition_code(self, received, repeat):
+        """
+        Decodes a repetition-coded sequence by applying majority voting and calculates vote scores.
+        """
+        decoded = []
+        scores = []
+        for i in range(0, len(received), repeat):
+            chunk = received[i:i+repeat]
+            if len(chunk) == repeat:
+                vote_score = max(chunk.count(0), chunk.count(1))  # Majority vote score
+                decoded.append(int(np.round(np.mean(chunk))))
+                scores.append(vote_score)
+        return decoded, scores
 
-        # 2. Find the first occurrence of the postamble, starting after preamble ends.
-        end_search_start = start_idx + len(preamble)
-        end_idx = self.find_subarray(data[end_search_start:], postamble)
-        if end_idx == -1:
-            return None  # Postamble not found
-
-        # Adjust end_idx relative to the original data
-        end_idx += end_search_start
-
-        if include_markers:
-            # Return from start of preamble to end of postamble
-            return data[start_idx : end_idx + len(postamble)], (start_idx, end_idx + len(postamble))
-        else:
-            # Return only what's between the preamble and postamble
-            return data[start_idx + len(preamble) : end_idx], (start_idx + len(preamble), end_idx)
+    def find_best_sequence(self, received, known_seq, repeat):
+        """
+        Finds the best matching sequence in the received repetition-coded data based on the highest vote score.
+        """
+        best_index = -1
+        best_score = -1
+        best_match = []
+        cnt = 0
+        while len(received) >= repeat * len(known_seq):
+            decoded, scores = self.decode_repetition_code(received, repeat)
+            window = decoded[:len(known_seq)]
+            avg_score = np.mean(scores[:len(known_seq)])
+            
+            if window == known_seq and avg_score > best_score:
+                best_index = cnt
+                best_score = avg_score
+                best_match = window
+            
+            received = received[1:]  # Slide one step forward
+            cnt += 1
         
+        if best_index != -1:
+            print(f"Best match found at index {best_index} with average vote score {best_score}")
+            return best_index
+        else:
+            print("Known sequence not found")
+            return None
 
+    def detect_message_indices(self,received, preamble, repeat):
+        preamble = preamble[::repeat]
+        received_start = self.find_best_sequence(received[:len(received)//4], preamble, repeat)
+        received_end = self.find_best_sequence(received[ 3* (len(received)//4):], preamble, repeat)
+        return received_start + len(preamble)*repeat, received_end + 3* (len(received)//4)
 
     def get_llr(self, frame):
         res,llr = self.decode(frame)
-        try:
-            frame, index = self.get_frame(res)
-        except:
+
+        # try:
+        index = self.detect_message_indices(received=res, preamble=self.conf.PREAMBLE, repeat=self.conf.PREAMBLE_REPEAT)
+        print("index: ", index)
+        frame = frame[index[0]:index[1]]
+        if index[0] is None:
             print("premable not found!")
             return None, None, None, None
         # msg_scale = cc.pick_bg2_file_for_Z()
         # mac_scale = int(1/self.conf.MAC_CODE_RATE)
-        llr_msg = llr[index[0]:index[0]+4352]
-        llr_mac = llr[index[0]+4352:index[0]+4352+1088]
-        msg = res[index[0]:index[0]+4352]
-        mac = res[index[0]+4352:index[0]+4352+1088]
+        llr_msg = llr[index[0]:index[1]]
+        # llr_mac = llr[index[0]+4352:index[0]+4352+1088]
+        llr_mac = None
+        msg = res[index[0]:index[1]]
+        mac = None
+        # mac = res[index[0]+4352:index[0]+4352+1088]
         return msg, mac, llr_msg, llr_mac
     
     def soft_decision(self, llr, H_param):
@@ -211,8 +237,16 @@ class Demodulation:
     def ldpc_decode(self, llr_msg, llr_mac):
         msg_H_param = cc.get_5G_ldpc_params("msg: 1024 code_rate: "+str(np.round(self.conf.MSG_CODE_RATE,2))+".txt")
         mac_H_param = cc.get_5G_ldpc_params("msg: 256 code_rate: "+str(np.round(self.conf.MAC_CODE_RATE,2))+".txt")
-        msg = self.soft_decision(llr_msg, H_param=msg_H_param)
-        mac = self.soft_decision(llr_mac, H_param=mac_H_param)
+
+        try:
+            msg = self.soft_decision(llr_msg, H_param=msg_H_param)
+        except:
+            msg = None
+        try:
+            mac = self.soft_decision(llr_mac, H_param=mac_H_param)
+        except:
+            mac = None
+
         return msg, mac
 
 
@@ -325,30 +359,39 @@ class PostProcessing:
             insert_data = copy.deepcopy(self.conf.config)
             insert_data["TIME"] =  datetime.datetime.now()
             frame = self.frameByNumber(indx)
-            # insert_data['I'], insert_data['Q'] = np.array(np.real(frame), dtype=np.int8).tolist(), np.array(np.imag(frame), dtype=np.int8).tolist()
-            msg, mac, msg_llr, mac_llr = self.demod.get_llr(frame)
-  
-            if msg_llr is None or mac_llr is None:
-                print("preamble not found!")
-                insert_data['error'] = 'premable not found!'
-                collection.insert_one(insert_data)
-                continue
-            insert_data['msg_hard_decision'] = self.bits_to_string(msg[0:1024])
-            insert_data['mac_hard_decision'] = self.binary_list_to_hex(mac[0:256])
-            insert_data['success_verification'] = hmac.new(self.conf.MAC_KEY.encode('utf-8'), msg=insert_data['msg_hard_decision'].encode('utf-8'), digestmod='sha256').hexdigest() == insert_data['mac_hard_decision']
+            I = np.array(np.real(frame)).tobytes()
+            Q = np.array(np.imag(frame)).tobytes()
+
+            insert_data['I'], insert_data['Q'] = bson.binary.Binary(I), bson.binary.Binary(Q)
+            insert_data['dtype'] = 'float'
+            insert_data['shape'] = frame.shape
 
             insert_data['noise_power'] = self.noise_power
-            insert_data['Signal_to_Noise_Ratio'] = 10*np.log10((np.average(np.abs(frame)**2) -self.noise_power) /self.noise_power)
-            print("SNR: ", insert_data['Signal_to_Noise_Ratio'])
-            insert_data['llr_msg'] = msg_llr
-            insert_data['llr_mac'] = mac_llr
+            insert_data['Signal_to_Noise_Ratio (DB)'] = 10*np.log10((np.average(np.abs(frame)**2) -self.noise_power) /self.noise_power)
+            print("SNR: ", insert_data['Signal_to_Noise_Ratio (DB)'])
+
+            msg, mac, msg_llr, mac_llr = self.demod.get_llr(frame)
+  
+            # if msg_llr is None or mac_llr is None:
+            #     print("preamble not found!")
+            #     insert_data['error'] = 'premable not found!'
+            #     collection.insert_one(insert_data)
+            #     continue
+            insert_data['msg_hard_decision'] = self.bits_to_string(msg[0:1024])
+            # insert_data['mac_hard_decision'] = self.binary_list_to_hex(mac[0:256])
+            # insert_data['success_verification'] = hmac.new(self.conf.MAC_KEY.encode('utf-8'), msg=insert_data['msg_hard_decision'].encode('utf-8'), digestmod='sha256').hexdigest() == insert_data['mac_hard_decision']
+
+
+            # insert_data['llr_msg'] = msg_llr
+            # insert_data['llr_mac'] = mac_llr
 
             msg, mac = self.demod.ldpc_decode(msg_llr, mac_llr)
             insert_data['rceived_msg_ldpc_string'] = self.bits_to_string(msg[0:1024])
-            insert_data['rceived_mac_ldpc_hex'] = self.binary_list_to_hex(mac[0:256])
-            insert_data['ldpc_success_verification'] = hmac.new(self.conf.MAC_KEY.encode('utf-8'), msg=insert_data['rceived_msg_ldpc_string'].encode('utf-8'), digestmod='sha256').hexdigest() == insert_data['rceived_mac_ldpc_hex']
+            # insert_data['rceived_mac_ldpc_hex'] = self.binary_list_to_hex(mac[0:256])
+            # insert_data['ldpc_success_verification'] = hmac.new(self.conf.MAC_KEY.encode('utf-8'), msg=insert_data['rceived_msg_ldpc_string'].encode('utf-8'), digestmod='sha256').hexdigest() == insert_data['rceived_mac_ldpc_hex']
 
-            print("msg: ", insert_data['rceived_msg_ldpc_string'], "\nsuccess MAC: ", insert_data['rceived_mac_ldpc_hex'])
+            print("msg: ", insert_data['msg_hard_decision'],'\n', insert_data['rceived_msg_ldpc_string'])
+            print('')
             collection.insert_one(insert_data)
         print("\nData pushed to the database ...")
 

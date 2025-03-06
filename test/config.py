@@ -46,6 +46,7 @@ class CONFIG:
         self.IN_CHAMBER = self.config['IN_CHAMBER']
 
         self.PREAMBLE = self.config['PREAMBLE']
+        self.PREAMBLE_REPEAT = self.config['PREAMBLE_REPEAT']
         self.PAYLOAD = self.config['PAYLOAD']
         self.MSG_CODE_RATE = self.config['MSG_CODE_RATE']
         self.MAC_CODE_RATE = self.config['MAC_CODE_RATE']
@@ -92,11 +93,11 @@ class CONFIG:
         config['FREQ'] = 1.9e9
 
         config['TX_RATE'] = 1e6
-        config['TX_GAIN'] = 89.8 
+        config['TX_GAIN'] = 89.8 # max gain 89.8
         config['TX_SPS'] = 40
 
         config['RX_RATE'] = 5e6
-        config['RX_GAIN'] = 76 # Automatic Gain Control "agc"
+        config['RX_GAIN'] = 50 # Automatic Gain Control "agc" max gain 76
 
         config['LINIENT'] = 10
         config['MIMO'] = False
@@ -104,12 +105,14 @@ class CONFIG:
         config['IN_CHAMBER'] = False
 
 
+        # repeat the preamble 10 times
+        PREAMBLE_REPEAT = 10
         # the reason for long preamble is the power warm up on the SDR
-        PREAMBLE  = [0 for _ in range(1000//config['TX_SPS'])]
-        PREAMBLE += [1,0,1,0,1,0,1,0,1,0]  
-        PREAMBLE += [0 for _ in range(10)] 
-        PREAMBLE += [1]
+        PREAMBLE =  [+1, +1, +1, +1, +1, 0, 0, +1, +1, 0, +1, 0, +1]*PREAMBLE_REPEAT
+        PREAMBLE = np.repeat(PREAMBLE, PREAMBLE_REPEAT).tolist()
+
         config['PREAMBLE'] = PREAMBLE
+        config['PREAMBLE_REPEAT'] = PREAMBLE_REPEAT
         config['PAYLOAD'] = PAYLOAD
         config['MSG_CODE_RATE'] = 1/3
         config['MAC_CODE_RATE'] = 1/3
