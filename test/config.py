@@ -93,11 +93,11 @@ class CONFIG:
         config['FREQ'] = 1.9e9
 
         config['TX_RATE'] = 1e6
-        config['TX_GAIN'] = 89.8 # max gain 89.8
+        config['TX_GAIN'] = 50 # max gain 89.8
         config['TX_SPS'] = 40
 
         config['RX_RATE'] = 5e6
-        config['RX_GAIN'] = 50 # Automatic Gain Control "agc" max gain 76
+        config['RX_GAIN'] = 'agc' # Automatic Gain Control "agc" max gain 76
 
         config['LINIENT'] = 10
         config['MIMO'] = False
@@ -106,9 +106,9 @@ class CONFIG:
 
 
         # repeat the preamble 10 times
-        PREAMBLE_REPEAT = 10
+        PREAMBLE_REPEAT = 15
         # the reason for long preamble is the power warm up on the SDR
-        PREAMBLE =  [+1, +1, +1, +1, +1, 0, 0, +1, +1, 0, +1, 0, +1]*PREAMBLE_REPEAT
+        PREAMBLE =  [+1, +1, +1, +1, +1, 0, 0, +1, +1, 0, +1, 0, +1]
         PREAMBLE = np.repeat(PREAMBLE, PREAMBLE_REPEAT).tolist()
 
         config['PREAMBLE'] = PREAMBLE

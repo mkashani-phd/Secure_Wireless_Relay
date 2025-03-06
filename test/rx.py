@@ -206,11 +206,13 @@ class Demodulation:
             print("Known sequence not found")
             return None
 
-    def detect_message_indices(self,received, preamble, repeat):
-        preamble = preamble[::repeat]
-        received_start = self.find_best_sequence(received[:len(received)//4], preamble, repeat)
-        received_end = self.find_best_sequence(received[ 3* (len(received)//4):], preamble, repeat)
-        return received_start + len(preamble)*repeat, received_end + 3* (len(received)//4)
+    def detect_message_indices(self,received, preamble, repeat, cooefficient=2):
+        preamble = preamble
+        received_start = self.find_best_sequence(received[:len(preamble)*cooefficient], preamble[::repeat], repeat)
+        received_end = self.find_best_sequence(received[-cooefficient*len(preamble):], preamble[::repeat], repeat)
+        if received_start is None or received_end is None:
+            return None, None
+        return received_start + len(preamble), received_end + len(received)-(cooefficient*len(preamble))
 
     def get_llr(self, frame):
         res,llr = self.decode(frame)
@@ -218,10 +220,12 @@ class Demodulation:
         # try:
         index = self.detect_message_indices(received=res, preamble=self.conf.PREAMBLE, repeat=self.conf.PREAMBLE_REPEAT)
         print("index: ", index)
-        frame = frame[index[0]:index[1]]
+
         if index[0] is None:
             print("premable not found!")
             return None, None, None, None
+            
+        frame = frame[index[0]:index[1]]
         # msg_scale = cc.pick_bg2_file_for_Z()
         # mac_scale = int(1/self.conf.MAC_CODE_RATE)
         llr_msg = llr[index[0]:index[1]]
@@ -372,12 +376,13 @@ class PostProcessing:
 
             msg, mac, msg_llr, mac_llr = self.demod.get_llr(frame)
   
-            # if msg_llr is None or mac_llr is None:
-            #     print("preamble not found!")
-            #     insert_data['error'] = 'premable not found!'
-            #     collection.insert_one(insert_data)
-            #     continue
+            if msg_llr is None:
+                print("preamble not found!")
+                insert_data['error'] = 'premable not found!'
+                collection.insert_one(insert_data)
+                continue
             insert_data['msg_hard_decision'] = self.bits_to_string(msg[0:1024])
+            print("msg: ", insert_data['msg_hard_decision'])
             # insert_data['mac_hard_decision'] = self.binary_list_to_hex(mac[0:256])
             # insert_data['success_verification'] = hmac.new(self.conf.MAC_KEY.encode('utf-8'), msg=insert_data['msg_hard_decision'].encode('utf-8'), digestmod='sha256').hexdigest() == insert_data['mac_hard_decision']
 
@@ -386,11 +391,15 @@ class PostProcessing:
             # insert_data['llr_mac'] = mac_llr
 
             msg, mac = self.demod.ldpc_decode(msg_llr, mac_llr)
+            if msg is None:
+                insert_data['error'] = 'ldpc decoding failed!'
+                collection.insert_one(insert_data)
+                continue
             insert_data['rceived_msg_ldpc_string'] = self.bits_to_string(msg[0:1024])
             # insert_data['rceived_mac_ldpc_hex'] = self.binary_list_to_hex(mac[0:256])
             # insert_data['ldpc_success_verification'] = hmac.new(self.conf.MAC_KEY.encode('utf-8'), msg=insert_data['rceived_msg_ldpc_string'].encode('utf-8'), digestmod='sha256').hexdigest() == insert_data['rceived_mac_ldpc_hex']
 
-            print("msg: ", insert_data['msg_hard_decision'],'\n', insert_data['rceived_msg_ldpc_string'])
+            print(insert_data['rceived_msg_ldpc_string'])
             print('')
             collection.insert_one(insert_data)
         print("\nData pushed to the database ...")
