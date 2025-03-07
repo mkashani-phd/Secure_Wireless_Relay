@@ -2,6 +2,7 @@ import pymongo.collection
 import uhd, time, config, os
 from operator import itemgetter
 from itertools import groupby
+import scipy.signal 
 import numpy as np
 import pymongo
 import datetime 
@@ -42,6 +43,11 @@ class RX:
         streamer.issue_stream_cmd(stream_cmd)
         while streamer.recv(recv_buffer, metadata):
             pass
+
+    def butter(self,input,cutoff, Fs):
+        fltr = scipy.signal.butter(30, cutoff, 'low', analog=False, output='sos',fs=Fs)
+        return scipy.signal.sosfilt(fltr, input) 
+
 
 
     def record(self):
@@ -93,7 +99,8 @@ class RX:
             Noise_power = 0
             for i in range(nr_batches):
                 streamer.recv(recv_buffer, metadata)
-                fft = np.abs(np.fft.fft(recv_buffer[0]))
+                # recv_buffer[0] = self.butter(recv_buffer[0], cutoff=0.5, Fs=self.conf.RX_RATE)
+                fft = np.abs(np.fft.fft(self.butter(recv_buffer[0], cutoff=0.5, Fs=self.conf.RX_RATE)))
                 if np.sum(
                     np.concatenate(
                                 [
