@@ -30,6 +30,7 @@ class CONFIG:
         self.FREQ = self.config['FREQ']
         self.TX_RATE = self.config['TX_RATE']
         self.TX_GAIN = self.config['TX_GAIN']
+        self.TX_PAYLOAD_POWER_SCALE = self.config['TX_PAYLOAD_POWER_SCALE']
         self.TX_SPS = self.config['TX_SPS']
 
 
@@ -94,11 +95,12 @@ class CONFIG:
         config['FREQ'] = 1.9e9
 
         config['TX_RATE'] = 1e6
-        config['TX_GAIN'] = 50 # max gain 89.8
+        config['TX_GAIN'] = 10 # max gain 89.8
+        config['TX_PAYLOAD_POWER_SCALE'] = 1/20
         config['TX_SPS'] = 40
 
         config['RX_RATE'] = 5e6
-        config['RX_GAIN'] = 50 # Automatic Gain Control "agc" max gain 76
+        config['RX_GAIN'] = 89.8 # Automatic Gain Control "agc" max gain 76
         # aviod the agc if the SNR calculation is needed
         config['LPF_CUTOFF'] = 3e5
 

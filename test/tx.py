@@ -71,7 +71,7 @@ def test():
                               conf.TX_SPS, 
                               preamble = np.concatenate([ [0 for _ in range(1000//conf.TX_SPS)] , conf.PREAMBLE]), 
                               postamble = np.concatenate([conf.PREAMBLE, [0 for _ in range(1000//conf.TX_SPS)]]),
-                              scale = 1/20 # send the payload with half the power of the preamble
+                              scale = conf.TX_PAYLOAD_POWER_SCALE # send the payload with half the power of the preamble
                               )
 
     usrp = uhd.usrp.MultiUSRP("serial=8000169")  # Replace with your USRP's serial or remove parameter for default
