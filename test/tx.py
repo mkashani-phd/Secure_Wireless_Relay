@@ -28,12 +28,23 @@ def string_to_bits(s):
         bits.extend([int(b) for b in bin_repr])
     return bits
 
-def fsk_modulate(bits, sps):
-    symbols = bits_to_symbols(bits)
-    upsampled = np.repeat(symbols, sps) / np.sqrt(sps)
-    phase =  np.cumsum(upsampled) 
-    fsk_signal = np.exp(1j * phase).astype(np.complex64)
-    return fsk_signal
+def fsk_modulate(bits, sps, preamble, postamble, scale = 1/2):
+    preamble_symbols = bits_to_symbols(preamble)
+    postamble_symbols = bits_to_symbols(postamble)
+    payload_symbols = bits_to_symbols(bits)
+    preamble_upsampled = np.repeat(preamble_symbols, sps) / np.sqrt(sps)
+    postamble_upsampled = np.repeat(postamble_symbols, sps) / np.sqrt(sps)
+    payload_upsampled = np.repeat(payload_symbols, sps) / np.sqrt(sps)
+
+    preamble_phase = np.cumsum(preamble_upsampled)
+    postamble_phase = np.cumsum(postamble_upsampled)
+    payload_phase = np.cumsum(payload_upsampled)
+
+    preamble_signal = np.exp(1j * preamble_phase).astype(np.complex64)
+    postamble_signal = np.exp(1j * postamble_phase).astype(np.complex64)
+    payload_signal = np.sqrt(scale)* np.exp(1j * payload_phase).astype(np.complex64)
+
+    return np.concatenate([preamble_signal, payload_signal, postamble_signal])
 
 def test():
     global tx_bits
@@ -49,16 +60,19 @@ def test():
     
     tx_bits = np.concatenate(
                                 [ 
-                                [0 for _ in range(1000//conf.TX_SPS)] , # needed for the USRP amplifier to warm up
-                                conf.PREAMBLE ,
+                                
                                 list(payload_bits),
                                 # MAC_bits,
-                                conf.PREAMBLE,
-                                [0 for _ in range(1000//conf.TX_SPS)]  # 
+ # 
                                 ]
                             )
     # print(tx_bits.tolist())
-    fsk_signal = fsk_modulate(tx_bits, conf.TX_SPS)
+    fsk_signal = fsk_modulate(tx_bits, # sends with half the power
+                              conf.TX_SPS, 
+                              preamble = np.concatenate([ [0 for _ in range(1000//conf.TX_SPS)] , conf.PREAMBLE]), 
+                              postamble = np.concatenate([conf.PREAMBLE, [0 for _ in range(1000//conf.TX_SPS)]]),
+                              scale = 1/20 # send the payload with half the power of the preamble
+                              )
 
     usrp = uhd.usrp.MultiUSRP("serial=8000169")  # Replace with your USRP's serial or remove parameter for default
     # Transmit signal

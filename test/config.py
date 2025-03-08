@@ -36,6 +36,7 @@ class CONFIG:
 
         self.RX_RATE = self.config['RX_RATE']
         self.RX_GAIN = self.config['RX_GAIN']
+        self.LPF_CUTOFF = self.config['LPF_CUTOFF']
         self.ACQ_TIME = self.config['ACQ_TIME']
         self.MIMO = self.config['MIMO']
         self.CHANNEL = [0] if not self.MIMO else [0,1]
@@ -97,7 +98,9 @@ class CONFIG:
         config['TX_SPS'] = 40
 
         config['RX_RATE'] = 5e6
-        config['RX_GAIN'] = 'agc' # Automatic Gain Control "agc" max gain 76
+        config['RX_GAIN'] = 50 # Automatic Gain Control "agc" max gain 76
+        # aviod the agc if the SNR calculation is needed
+        config['LPF_CUTOFF'] = 3e5
 
         config['LINIENT'] = 10
         config['MIMO'] = False

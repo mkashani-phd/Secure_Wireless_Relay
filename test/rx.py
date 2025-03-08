@@ -10,6 +10,12 @@ import copy
 import channelCoding as cc
 import hmac
 import bson
+import queue
+
+import matplotlib.pyplot as plt
+
+noise_batch_size_len = 2040
+noise_nr_batches = 10
 
 
 class RX:
@@ -44,10 +50,6 @@ class RX:
         while streamer.recv(recv_buffer, metadata):
             pass
 
-    def butter(self,input,cutoff, Fs):
-        fltr = scipy.signal.butter(30, cutoff, 'low', analog=False, output='sos',fs=Fs)
-        return scipy.signal.sosfilt(fltr, input) 
-
 
 
     def record(self):
@@ -68,6 +70,7 @@ class RX:
             print("AGC is enabled")
 
         self._start_stream(streamer = streamer,batch_size= batch_size)
+        
 
         #updating file name if mimo
         if self.conf.MIMO:
@@ -93,14 +96,21 @@ class RX:
         else:
             file = "_"+str(np.round(self.usrp.get_rx_freq(),2))+"_"+str(np.round(self.usrp.get_rx_rate(),2))+"_"+str(self.conf.RX_GAIN)+"_"+str(self.conf.ACQ_TIME) + "_"+ str(self.conf.IN_CHAMBER)+"_.iq"
             f = open(file,"wb")
-
             start = time.time()
             cnt = 4
-            Noise_power = 0
-            for i in range(nr_batches):
+            
+
+
+            for i in range(nr_batches + noise_nr_batches):
                 streamer.recv(recv_buffer, metadata)
+                if i < noise_nr_batches:
+                    recv_buffer[0].tofile(f)
+                    continue
+                elif i == noise_nr_batches:
+                    np.zeros(10).tofile(f)
+                    continue
                 # recv_buffer[0] = self.butter(recv_buffer[0], cutoff=0.5, Fs=self.conf.RX_RATE)
-                fft = np.abs(np.fft.fft(self.butter(recv_buffer[0], cutoff=0.5, Fs=self.conf.RX_RATE)))
+                fft = np.abs(np.fft.fft(recv_buffer[0]))
                 if np.sum(
                     np.concatenate(
                                 [
@@ -109,16 +119,15 @@ class RX:
                                 ]
                             )
                         ) > 1.4*2*self.conf.FREQ_DEVIATION_PRECENTAGE*np.sum(fft[int(self.conf.FREQ_DEVIATION_PRECENTAGE*batch_size): int(1-self.conf.FREQ_DEVIATION_PRECENTAGE*batch_size)]):
+                    
                     recv_buffer[0].tofile(f) 
                     cnt = 0   
                 else:
                     if (cnt:=cnt+1) < self.conf.LINIENT:
                        recv_buffer[0].tofile(f)  
                     else:
-                        Noise_power = np.average(np.abs(recv_buffer[0])**2)
-                        np.zeros(10, dtype=np.complex64).tofile(f)
-                        np.array([Noise_power], dtype=np.complex64).tofile(f)
-                        np.zeros(10, dtype=np.complex64).tofile(f)
+                        np.zeros(batch_size).tofile(f)
+
                 
 
             duration = time.time() - start
@@ -141,6 +150,9 @@ class Demodulation:
     def __init__(self, conf:config.CONFIG = config.CONFIG()):
         self.conf = conf
         
+    def butter(self,input):
+        fltr = scipy.signal.butter(30, self.conf.LPF_CUTOFF, 'low', analog=False, output='sos',fs=self.conf.RX_RATE)
+        return scipy.signal.sosfilt(fltr, input) 
 
     def fft_max_peak(self, frame,window):
         fft = np.fft.fftshift(np.fft.fft(frame[:window]))
@@ -162,6 +174,8 @@ class Demodulation:
         res= []
         llr = []
         window = slide = self.conf.WINDOW
+        # lpf
+        frame = self.butter(frame)
         
         # res.append(self.decision(peak = peak, threshold=window//2))
         for i in range(0,len(frame),slide):
@@ -169,6 +183,26 @@ class Demodulation:
             res.append(self.decision(peak=peak, threshold=window//2))
             llr.append(self.llr_from_fft(fft))
         return res, llr
+    
+    def getSNR(self, payload, noise):
+        # calculate the frame power avoiding the preamble
+
+        noise_power = np.average(np.abs(self.butter(noise))**2)
+        payload_power = np.average(np.abs(self.butter(payload))**2)
+        print("noise power: ", noise_power)
+        print("payload power: ", payload_power)
+
+        SNR = 10*np.log10( np.average( (payload_power  / noise_power) -1))
+        return SNR
+
+
+        # """Estimate SNR from a received frame without noise data."""
+
+        # power = np.mean(np.abs(payload) ** 2)  # Total power (signal + noise)
+        # variance = np.var(payload)  # Variance of received signal
+        # snr_linear = power / variance - 1  # SNR estimation
+        # snr_db = 10 * np.log10(snr_linear) if snr_linear > 0 else -np.inf  # Convert to dB
+        # return snr_db
 
 
     def decode_repetition_code(self, received, repeat):
@@ -271,53 +305,67 @@ class PostProcessing:
         self.demod = demod
 
         self.IQsamples = np.fromfile(file, np.complex64)
-        framesIndex, self.noise_power = self.frameFinder(samples=self.IQsamples)
-        self.zeroRemover(samples=self.IQsamples,framesIndex=framesIndex)  
+        
+        # import matplotlib.pyplot as plt
+        # plt.figure(figsize=(20,10), dpi=80)
+        # plt.plot(np.abs(self.IQsamples))
+        # plt.show()
 
-        self.tindx = np.fromfile(self.file+".tindx", dtype=int, sep= ',')
-        self.TotalFramesIndex, _ = self.frameFinder(self.IQsamples)
-        self.tindx = self.tindx.reshape(-1,2)
+        self.TotalFramesIndex, self.TotalNoiseIndex = self.frameFinder(self.IQsamples)
+
+
+        # self.zeroRemover(samples=self.IQsamples,framesIndex=framesIndex)  
+        # self.tindx = np.fromfile(self.file+".tindx", dtype=int, sep= ',')
+        # self.tindx = self.tindx.reshape(-1,2)
+
+        
 
     def __len__(self):
         return len(self.TotalFramesIndex)
 
-    def indexByNumber(self,num):
-        return self.TotalFramesIndex[num]
+
     def frameByIndex(self,index):
         return self.IQsamples[index[0]:index[1]]
-
     def frameByNumber(self,frame_nr:int):
         return self.frameByIndex(self.TotalFramesIndex[frame_nr])
+    
+    def noiseByIndex(self,index):
+        return self.IQsamples[index[0]:index[1]]
+    def noiseByNumber(self,noise_nr:int):
+        return self.noiseByIndex(self.TotalNoiseIndex[noise_nr])
 
     def frameFinder(self, samples):
+        plt.plot(np.abs(samples))
         test_list = np.nonzero(samples)
-        noise_power_avg = 0
-        cnt = 0
+        noise_index = []
         framesIndex = []
+
+
         for k, g in groupby(enumerate(test_list[0]), lambda ix: ix[0]-ix[1]):
             temp = list(map(itemgetter(1), g))
-            if len(temp)==1:
-                noise_power_avg += np.real(samples[temp[0]])
-                cnt += 1
+            if len(temp)== noise_nr_batches* noise_batch_size_len: #hard coded but must be changed
+                noise_index.append([temp[0],temp[-1]])
+                frame = False
                 continue
             elif len(temp)< self.conf.MIN_FRAME_SIZE:
                 continue
+
             framesIndex.append([temp[0],temp[-1]])
 
-        return np.array(framesIndex), noise_power_avg/cnt
+        return np.array(framesIndex), np.array(noise_index*len(framesIndex))
 
-    def zeroRemover(self, samples, framesIndex):
-        f = open(self.file,"wb")
-        f_time_index= open(self.file+".tindx","wb")
+    # def zeroRemover(self, samples, framesIndex):
+    #     f = open(self.file,"wb")
+    #     f_time_index= open(self.file+".tindx","wb")
 
-        framesIndex.tofile(f_time_index,sep= ',')
-        for i,j in framesIndex:
-            frame = samples[i:j]
-            frame.tofile(f)
-            np.zeros(2,dtype=np.complex64).tofile(f)
+    #     framesIndex.tofile(f_time_index,sep= ',')
+    #     for i,j in framesIndex:
+    #         frame = samples[i:j]
+    #         frame.tofile(f)
+    #         np.zeros(2,dtype=np.complex64).tofile(f)
 
-        f.close()
-        f_time_index.close()
+    #     f.close()
+    #     f_time_index.close()
 
     def check(self): 
         #check minimum number of the frames
@@ -369,17 +417,36 @@ class PostProcessing:
         for indx in range(len(self.TotalFramesIndex)):
             insert_data = copy.deepcopy(self.conf.config)
             insert_data["TIME"] =  datetime.datetime.now()
+
             frame = self.frameByNumber(indx)
             I = np.array(np.real(frame)).tobytes()
             Q = np.array(np.imag(frame)).tobytes()
-
             insert_data['I'], insert_data['Q'] = bson.binary.Binary(I), bson.binary.Binary(Q)
-            insert_data['dtype'] = 'float'
-            insert_data['shape'] = frame.shape
+            insert_data['frame_dtype'] = 'float'
+            insert_data['frame_shape'] = list(frame.shape)
+ 
+            noise = self.noiseByNumber(indx)
+            noise_I = np.array(np.real(noise)).tobytes()
+            noise_Q = np.array(np.imag(noise)).tobytes()
+            insert_data['noise_I'] , insert_data['noise_Q'] = bson.binary.Binary(noise_I), bson.binary.Binary(noise_Q)
+            insert_data['noise_dtype'] = 'float'
+            insert_data['noise_shape'] = list(noise.shape)
 
-            insert_data['noise_power'] = self.noise_power
-            insert_data['Signal_to_Noise_Ratio (DB)'] = 10*np.log10((np.average(np.abs(frame)**2) -self.noise_power) /self.noise_power)
-            print("SNR: ", insert_data['Signal_to_Noise_Ratio (DB)'])
+
+
+
+            
+            # calculate the frame power avoiding the preamble
+            payload = frame[int(len(self.conf.PREAMBLE)*self.conf.PREAMBLE_REPEAT*self.conf.TX_SPS * 2) : int(-1*len(self.conf.PREAMBLE)*self.conf.PREAMBLE_REPEAT*self.conf.TX_SPS * 2)]
+
+            if len(payload) < 1024:
+                insert_data['error'] = 'frame too short!'
+                collection.insert_one(insert_data)
+                continue
+            insert_data['SNR'] = self.demod.getSNR(payload, noise)
+            print("SNR: ", insert_data['SNR'])
+
+
 
             msg, mac, msg_llr, mac_llr = self.demod.get_llr(frame)
   
