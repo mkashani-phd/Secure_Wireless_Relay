@@ -13,9 +13,10 @@ def main():
         t2 = threading.Thread(target=tx)
  
 
-        t2.start()
-        time.sleep(.1)
         t1.start()
+        time.sleep(.8)
+        t2.start()
+
 
         t1.join()
         t2.join()

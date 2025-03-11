@@ -3,6 +3,7 @@ import uhd, time, config, os
 from operator import itemgetter
 from itertools import groupby
 import scipy.signal 
+from scipy.special import i0
 import numpy as np
 import pymongo
 import datetime 
@@ -162,27 +163,96 @@ class Demodulation:
     def decision(self, peak, threshold):
         return 0 if peak < threshold else 1
     
-    def llr_from_fft(self, fft):
-        E_f1 = np.sum(np.power(np.abs(fft[len(fft)//2 - int(len(fft)*self.conf.FREQ_DEVIATION_PRECENTAGE)]),1))
-        E_f2 = np.sum(np.power(np.abs(fft[len(fft)//2 + int(len(fft)*self.conf.FREQ_DEVIATION_PRECENTAGE)]),1))
+    def find_best_offset(self, signal, symbol_length, tone_bins):
+    
+        best_offset = 0
+        best_energy = -np.inf
+        energies = []
+        
+        # Try different offsets in the range [0, max_offset)
+        for offset in range(self.conf.WINDOW):
+            # Compute how many complete symbols we have given the offset.
+            n_symbols = (len(signal) - offset) // symbol_length
+            if n_symbols <= 0:
+                energies.append(0)
+                continue
+            
+            # Extract symbols using the candidate offset.
+            symbols = signal[offset : offset + n_symbols * symbol_length].reshape(n_symbols, symbol_length)
+            
+            # Compute the FFT for each symbol.
+            fft_symbols = np.fft.fft(symbols, axis=1)
+            
+            # For each symbol, sum the energy in the bins corresponding to the FSK tones.
+            # We use np.abs()**2 to get the energy.
+            symbol_energies = np.sum(np.abs(fft_symbols[:, tone_bins])**2, axis=1)
+            avg_energy = np.mean(symbol_energies)
+            energies.append(avg_energy)
+            
+            # Keep track of the offset with the maximum average energy.
+            if avg_energy > best_energy:
+                best_energy = avg_energy
+                best_offset = offset
+        
+        return best_offset
+    
+    def llr_from_fft(self, fft, noise):
+        E_f1 = np.sum(np.power(np.abs(fft[len(fft)//2 - int(len(fft)*self.conf.FREQ_DEVIATION_PRECENTAGE)]),2))
+        E_f2 = np.sum(np.power(np.abs(fft[len(fft)//2 + int(len(fft)*self.conf.FREQ_DEVIATION_PRECENTAGE)]),2))
         # llr for BFSK modulation is given by the following formula
-        return (E_f1-E_f2)
+        return ( np.average(np.power(np.abs(fft),2)) / noise )(E_f1-E_f2)
+    
+    
+    
 
 
-    def decode(self, frame):
+    def compute_hard_desicion_and_llr(self, signal, symbol_length, tone_bins, noise_level):
+
+        offset = self.find_best_offset(signal, symbol_length, tone_bins)
+        print("offset: ", offset)
+
+        n_symbols = (len(signal) - offset) // symbol_length
+        symbols = signal[offset:n_symbols * symbol_length + offset]
+        
+
+        hard_decision = []
+        for i in range(0,len(symbols),symbol_length):
+            peak,fft  = self.fft_max_peak(symbols[i:i+symbol_length],symbol_length)
+            hard_decision.append(self.decision(peak=peak, threshold=symbol_length//2))
+
+        
+
+        fft_symbols = np.fft.fft(symbols.reshape(n_symbols, symbol_length), axis=1)
+        # Extract the magnitudes at the two tone bins.
+        # r0 corresponds to the first tone and r1 to the second tone.
+        r0 = np.abs(fft_symbols[:, tone_bins[0]])
+        r1 = np.abs(fft_symbols[:, tone_bins[1]])
+        
+        # Compute the amplitude factor from the signal energy.
+        energy = np.average(np.abs(signal)**2)
+        A = np.sqrt(energy)
+        
+        llrs = 2*A*(r1 - r0) / noise_level
+
+        plt.figure(figsize=(10,5), dpi=80)
+        plt.stem(llrs)
+        plt.title("LLRs with superposition alpha = 1", fontsize=40)
+        plt.xlabel("Symbol index", fontsize=20)
+        plt.ylabel("LLR", fontsize=20)
+        plt.show()
+
+        
+        return hard_decision, list(llrs)
+
+
+
+    def decode(self, frame, noise):
     # compute sliding fft of the signal every 40 samples where the peak is 1 and the rest 0
-        res= []
-        llr = []
-        window = slide = self.conf.WINDOW
         # lpf
         frame = self.butter(frame)
+        return self.compute_hard_desicion_and_llr(frame, self.conf.WINDOW, [10,190], np.average(np.abs(self.butter(noise))**2))
         
-        # res.append(self.decision(peak = peak, threshold=window//2))
-        for i in range(0,len(frame),slide):
-            peak,fft  = self.fft_max_peak(frame[i:i+window],window)
-            res.append(self.decision(peak=peak, threshold=window//2))
-            llr.append(self.llr_from_fft(fft))
-        return res, llr
+
     
     def getSNR(self, payload, noise):
         # calculate the frame power avoiding the preamble
@@ -196,13 +266,7 @@ class Demodulation:
         return SNR
 
 
-        # """Estimate SNR from a received frame without noise data."""
 
-        # power = np.mean(np.abs(payload) ** 2)  # Total power (signal + noise)
-        # variance = np.var(payload)  # Variance of received signal
-        # snr_linear = power / variance - 1  # SNR estimation
-        # snr_db = 10 * np.log10(snr_linear) if snr_linear > 0 else -np.inf  # Convert to dB
-        # return snr_db
 
 
     def decode_repetition_code(self, received, repeat):
@@ -255,44 +319,45 @@ class Demodulation:
             return None, None
         return received_start + len(preamble), received_end + len(received)-(cooefficient*len(preamble))
 
-    def get_llr(self, frame):
-        res,llr = self.decode(frame)
 
-        # try:
-        index = self.detect_message_indices(received=res, preamble=self.conf.PREAMBLE, repeat=self.conf.PREAMBLE_REPEAT)
-        print("index: ", index)
 
-        if index[0] is None:
-            print("premable not found!")
-            return None, None, None, None
-            
-        frame = frame[index[0]:index[1]]
-        # msg_scale = cc.pick_bg2_file_for_Z()
-        # mac_scale = int(1/self.conf.MAC_CODE_RATE)
-        llr_msg = llr[index[0]:index[1]]
-        # llr_mac = llr[index[0]+4352:index[0]+4352+1088]
-        llr_mac = None
-        msg = res[index[0]:index[1]]
-        mac = None
-        # mac = res[index[0]+4352:index[0]+4352+1088]
-        return msg, mac, llr_msg, llr_mac
     
     def soft_decision(self, llr, H_param):
+        # try:
         return cc.decode_llr(np.array(llr), H_param)[0]
+        # except:
+        #     return None
+    
     def ldpc_decode(self, llr_msg, llr_mac):
         msg_H_param = cc.get_5G_ldpc_params("msg: 1024 code_rate: "+str(np.round(self.conf.MSG_CODE_RATE,2))+".txt")
         mac_H_param = cc.get_5G_ldpc_params("msg: 256 code_rate: "+str(np.round(self.conf.MAC_CODE_RATE,2))+".txt")
 
-        try:
-            msg = self.soft_decision(llr_msg, H_param=msg_H_param)
-        except:
-            msg = None
-        try:
-            mac = self.soft_decision(llr_mac, H_param=mac_H_param)
-        except:
-            mac = None
+        msg = self.soft_decision(llr_msg, H_param=msg_H_param)
+        mac = self.soft_decision(llr_mac, H_param=mac_H_param)
 
         return msg, mac
+    
+    def bits_to_symbols(self, bit_list):
+        bit_array = np.array(bit_list)
+        slope = 9.5 * self.conf.TX_SPS/self.conf.WINDOW
+        symbols = np.where(bit_array == 1, slope, -1*slope).astype(np.float32)
+        return symbols
+    
+    def fsk_modulate(self, bits):
+
+        bits_symbols = self.bits_to_symbols(bits)
+        bits_upsampled = np.repeat(bits_symbols, self.conf.WINDOW) / np.sqrt(self.conf.WINDOW)
+        bits_phase = np.cumsum(bits_upsampled)
+
+        return np.exp(1j * bits_phase).astype(np.complex64)
+    
+    def string_to_bits(self, s):
+        bits = []
+        for char in s:
+            bin_repr = format(ord(char), '08b')  # 8-bit binary
+            bits.extend([int(b) for b in bin_repr])
+        return bits
+
 
 
 
@@ -305,8 +370,8 @@ class PostProcessing:
         self.demod = demod
 
         self.IQsamples = np.fromfile(file, np.complex64)
-        
-        # import matplotlib.pyplot as plt
+
+        import matplotlib.pyplot as plt
         # plt.figure(figsize=(20,10), dpi=80)
         # plt.plot(np.abs(self.IQsamples))
         # plt.show()
@@ -415,67 +480,82 @@ class PostProcessing:
     
     def push_to_db(self, collection: pymongo.collection.Collection):
         for indx in range(len(self.TotalFramesIndex)):
+            print("\nProcessing frame: ", indx)
+
             insert_data = copy.deepcopy(self.conf.config)
             insert_data["TIME"] =  datetime.datetime.now()
 
             frame = self.frameByNumber(indx)
-            I = np.array(np.real(frame)).tobytes()
-            Q = np.array(np.imag(frame)).tobytes()
-            insert_data['I'], insert_data['Q'] = bson.binary.Binary(I), bson.binary.Binary(Q)
-            insert_data['frame_dtype'] = 'float'
-            insert_data['frame_shape'] = list(frame.shape)
- 
             noise = self.noiseByNumber(indx)
-            noise_I = np.array(np.real(noise)).tobytes()
-            noise_Q = np.array(np.imag(noise)).tobytes()
-            insert_data['noise_I'] , insert_data['noise_Q'] = bson.binary.Binary(noise_I), bson.binary.Binary(noise_Q)
-            insert_data['noise_dtype'] = 'float'
-            insert_data['noise_shape'] = list(noise.shape)
 
 
+            # I = np.array(np.real(frame)).tobytes()
+            # Q = np.array(np.imag(frame)).tobytes()
+            # insert_data['I'], insert_data['Q'] = bson.binary.Binary(I), bson.binary.Binary(Q)
+            # insert_data['frame_dtype'] = 'float'
+            # insert_data['frame_shape'] = list(frame.shape)
+ 
 
+            # noise_I = np.array(np.real(noise)).tobytes()
+            # noise_Q = np.array(np.imag(noise)).tobytes()
+            # insert_data['noise_I'] , insert_data['noise_Q'] = bson.binary.Binary(noise_I), bson.binary.Binary(noise_Q)
+            # insert_data['noise_dtype'] = 'float'
+            # insert_data['noise_shape'] = list(noise.shape)
 
             
             # calculate the frame power avoiding the preamble
-            payload = frame[int(len(self.conf.PREAMBLE)*self.conf.PREAMBLE_REPEAT*self.conf.TX_SPS * 2) : int(-1*len(self.conf.PREAMBLE)*self.conf.PREAMBLE_REPEAT*self.conf.TX_SPS * 2)]
-
-            if len(payload) < 1024:
-                insert_data['error'] = 'frame too short!'
-                collection.insert_one(insert_data)
-                continue
+            payload = frame[int(len(self.conf.PREAMBLE)*self.conf.PREAMBLE_REPEAT*self.conf.TX_SPS * 1.2) : int(-1*len(self.conf.PREAMBLE)*self.conf.PREAMBLE_REPEAT*self.conf.TX_SPS * 1.2)]
             insert_data['SNR'] = self.demod.getSNR(payload, noise)
             print("SNR: ", insert_data['SNR'])
 
 
-
-            msg, mac, msg_llr, mac_llr = self.demod.get_llr(frame)
-  
-            if msg_llr is None:
+            hard_decision,llr = self.demod.decode(frame, noise)
+            
+            index = self.demod.detect_message_indices(received=list(hard_decision), preamble=self.conf.PREAMBLE, repeat=self.conf.PREAMBLE_REPEAT)
+            if index[0] is None or index[1] is None:
                 print("preamble not found!")
                 insert_data['error'] = 'premable not found!'
                 collection.insert_one(insert_data)
                 continue
-            insert_data['msg_hard_decision'] = self.bits_to_string(msg[0:1024])
+
+            msg_hard_decision = hard_decision[index[0]:index[1]]
+            insert_data['msg_hard_decision'] = self.bits_to_string(msg_hard_decision)
             print("msg: ", insert_data['msg_hard_decision'])
+
+
+            msg_llr = llr[index[0]:index[1]]   
+            insert_data['llr_msg'] = msg_llr
+
+            msg_llr = [i /100 for i in msg_llr]
+            msg_llr = [ i -100 if i >0 else i + 100 for i in msg_llr]
+            plt.figure(figsize=(10,5), dpi=80)
+            plt.stem(msg_llr)
+            plt.title("LLRs with superposition alpha = 1", fontsize=40)
+            plt.show()
+            print("msg_llr: ", msg_llr)
+            
             # insert_data['mac_hard_decision'] = self.binary_list_to_hex(mac[0:256])
             # insert_data['success_verification'] = hmac.new(self.conf.MAC_KEY.encode('utf-8'), msg=insert_data['msg_hard_decision'].encode('utf-8'), digestmod='sha256').hexdigest() == insert_data['mac_hard_decision']
 
 
-            # insert_data['llr_msg'] = msg_llr
-            # insert_data['llr_mac'] = mac_llr
 
-            msg, mac = self.demod.ldpc_decode(msg_llr, mac_llr)
-            if msg is None:
+            mac = self.demod.soft_decision(msg_llr, H_param=cc.get_5G_ldpc_params("msg: 256 code_rate: "+str(np.round(self.conf.MAC_CODE_RATE,2))+".txt"))
+            if mac is None:
+                print("ldpc decoding failed!")
                 insert_data['error'] = 'ldpc decoding failed!'
                 collection.insert_one(insert_data)
                 continue
-            insert_data['rceived_msg_ldpc_string'] = self.bits_to_string(msg[0:1024])
-            # insert_data['rceived_mac_ldpc_hex'] = self.binary_list_to_hex(mac[0:256])
+            insert_data['rceived_mac_ldpc_hex'] = self.binary_list_to_hex(mac[0:256])
             # insert_data['ldpc_success_verification'] = hmac.new(self.conf.MAC_KEY.encode('utf-8'), msg=insert_data['rceived_msg_ldpc_string'].encode('utf-8'), digestmod='sha256').hexdigest() == insert_data['rceived_mac_ldpc_hex']
-
-            print(insert_data['rceived_msg_ldpc_string'])
+            
             print('')
+            print(insert_data['rceived_mac_ldpc_hex'])
+            print('649cf0f60f9f7eef788f654956aa3c0186c8334e5f5f7780269a63ec2e292108')
+
+            print('')
+
             collection.insert_one(insert_data)
+
         print("\nData pushed to the database ...")
 
 

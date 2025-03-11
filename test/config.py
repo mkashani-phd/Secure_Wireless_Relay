@@ -3,8 +3,8 @@ import numpy as np
 import hmac
 import time
 
-# a 1024 bit message
-PAYLOAD   = "This message is the default payload for the tests, and is 1024 bits long. It will be superposed with HMAC tag, that is 256 bits!"
+# a 1088 bit message
+PAYLOAD   = "This message is the default payload for the tests, and is 1088 bits long. It will be superposed with MAC tag of 256 bits with Rate= 1/3?!"
 
 class CONFIG:
     def __init__(self, config_yaml_path = None):
@@ -53,6 +53,7 @@ class CONFIG:
         self.MSG_CODE_RATE = self.config['MSG_CODE_RATE']
         self.MAC_CODE_RATE = self.config['MAC_CODE_RATE']
         self.SUPERPOSED = self.config['SUPERPOSED']
+        self.ALPHA = self.config['ALPHA']
 
         self.MIN_FRAME_SIZE = self.config['MIN_FRAME_SIZE']
         self.WINDOW = self.config['WINDOW']
@@ -95,9 +96,11 @@ class CONFIG:
         config['FREQ'] = 1.9e9
 
         config['TX_RATE'] = 1e6
-        config['TX_GAIN'] = 10 # max gain 89.8
-        config['TX_PAYLOAD_POWER_SCALE'] = 1/20
+        config['TX_GAIN'] = 30 # max gain 89.8
         config['TX_SPS'] = 40
+
+        config['TX_PAYLOAD_POWER_SCALE'] = 1/4
+        config['ALPHA'] = 0.2
 
         config['RX_RATE'] = 5e6
         config['RX_GAIN'] = 89.8 # Automatic Gain Control "agc" max gain 76
@@ -106,7 +109,7 @@ class CONFIG:
 
         config['LINIENT'] = 10
         config['MIMO'] = False
-        config['ACQ_TIME'] = 5
+        config['ACQ_TIME'] = 2
         config['IN_CHAMBER'] = False
 
 
@@ -119,13 +122,14 @@ class CONFIG:
         config['PREAMBLE'] = PREAMBLE
         config['PREAMBLE_REPEAT'] = PREAMBLE_REPEAT
         config['PAYLOAD'] = PAYLOAD
-        config['MSG_CODE_RATE'] = 1/3
+        config['MSG_CODE_RATE'] = 1
         config['MAC_CODE_RATE'] = 1/3
         config['SUPERPOSED'] = False
 
 
+
         # detection and decoding parameters
-        config['MIN_FRAME_SIZE'] = 7.6*len(PAYLOAD)* config['TX_SPS'] * config['RX_RATE']/config['TX_RATE']
+        config['MIN_FRAME_SIZE'] = (len(PAYLOAD)/config['MSG_CODE_RATE']+2*len(PREAMBLE))* config['TX_SPS'] * config['RX_RATE']/config['TX_RATE']
 
         config['WINDOW'] = int(config['TX_SPS'] * config['RX_RATE']/config['TX_RATE'])
         config['FREQ_DEVIATION_PRECENTAGE'] = 5/100 

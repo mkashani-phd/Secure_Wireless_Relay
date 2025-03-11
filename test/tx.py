@@ -28,21 +28,30 @@ def string_to_bits(s):
         bits.extend([int(b) for b in bin_repr])
     return bits
 
-def fsk_modulate(bits, sps, preamble, postamble, scale = 1/2):
+def fsk_modulate(bits, mac, alpha, sps, preamble, postamble, scale = 1/2):
     preamble_symbols = bits_to_symbols(preamble)
     postamble_symbols = bits_to_symbols(postamble)
     payload_symbols = bits_to_symbols(bits)
+    mac_symbols = bits_to_symbols(mac)
+
     preamble_upsampled = np.repeat(preamble_symbols, sps) / np.sqrt(sps)
     postamble_upsampled = np.repeat(postamble_symbols, sps) / np.sqrt(sps)
     payload_upsampled = np.repeat(payload_symbols, sps) / np.sqrt(sps)
+    mac_upsampled = np.repeat(mac_symbols, sps) / np.sqrt(sps)
 
     preamble_phase = np.cumsum(preamble_upsampled)
     postamble_phase = np.cumsum(postamble_upsampled)
     payload_phase = np.cumsum(payload_upsampled)
+    mac_phase = np.cumsum(mac_upsampled)
 
     preamble_signal = np.exp(1j * preamble_phase).astype(np.complex64)
     postamble_signal = np.exp(1j * postamble_phase).astype(np.complex64)
     payload_signal = np.sqrt(scale)* np.exp(1j * payload_phase).astype(np.complex64)
+    mac_signal = np.sqrt(scale)* np.exp(1j * mac_phase).astype(np.complex64)
+
+    ########### Superposition of MAC and Payload ###############################
+    payload_signal = np.sqrt(alpha)*mac_signal + np.sqrt(1-alpha)*payload_signal
+    ############################################################################
 
     return np.concatenate([preamble_signal, payload_signal, postamble_signal])
 
@@ -54,8 +63,10 @@ def test():
     MAC_bits = np.array(hex_to_binary_list(MAC))
 
 
-    payload_bits = cc.generate_5g_codeword_bg2(payload_bits, conf.MSG_CODE_RATE)
+    # payload_bits = cc.generate_5g_codeword_bg2(payload_bits, conf.MSG_CODE_RATE)
     MAC_bits = cc.generate_5g_codeword_bg2(MAC_bits, conf.MAC_CODE_RATE)
+
+    payload_bits = payload_bits[:MAC_bits.shape[0]]
     print(payload_bits.shape, MAC_bits.shape)
     
     tx_bits = np.concatenate(
@@ -67,8 +78,10 @@ def test():
                                 ]
                             )
     # print(tx_bits.tolist())
-    fsk_signal = fsk_modulate(tx_bits, # sends with half the power
-                              conf.TX_SPS, 
+    fsk_signal = fsk_modulate(tx_bits, # sends with half the power,
+                              mac = MAC_bits,
+                              alpha = conf.ALPHA,
+                              sps = conf.TX_SPS, 
                               preamble = np.concatenate([ [0 for _ in range(1000//conf.TX_SPS)] , conf.PREAMBLE]), 
                               postamble = np.concatenate([conf.PREAMBLE, [0 for _ in range(1000//conf.TX_SPS)]]),
                               scale = conf.TX_PAYLOAD_POWER_SCALE # send the payload with half the power of the preamble
