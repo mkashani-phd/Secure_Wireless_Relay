@@ -206,7 +206,9 @@ class Demodulation:
     
 
 
-    def compute_hard_desicion_and_llr(self, signal, symbol_length, tone_bins, noise_level):
+    def compute_hard_desicion_and_llr(self, signal, symbol_length, tone_bins, noise_level, message_bits_for_sure = None):
+        if message_bits_for_sure is None:
+            message_bits_for_sure = self.string_to_bits(self.conf.PAYLOAD)
 
         offset = self.find_best_offset(signal, symbol_length, tone_bins)
         print("offset: ", offset)
@@ -222,7 +224,7 @@ class Demodulation:
 
         
 
-        fft_symbols = np.array(np.abs(np.fft.fft(symbols.reshape(n_symbols, symbol_length), axis=1)), dtype=np.float32)
+        fft_symbols = np.array(np.power(np.fft.fft(symbols.reshape(n_symbols, symbol_length), axis=1),2), dtype=np.float32)
 
         plt.figure(figsize=(10,30), dpi=80)
         plt.imshow(fft_symbols[320:360,:], aspect='auto')
@@ -242,7 +244,7 @@ class Demodulation:
         E = np.average(signal**2)
 
         
-        llrs = np.log(r0/(r1 + noise_level))
+        llrs = np.log(r0/r1)
 
         plt.figure(figsize=(10,5), dpi=80)
         plt.stem(llrs)
@@ -254,17 +256,21 @@ class Demodulation:
 
         ######## beta ################
         # subtracting power of the hard decision according to the hard decision in the fft for the llr
-        for i in range(len(fft_symbols)):
-            unselected_tone_power = 0
-            for j in range(-2,3):    
-                unselected_tone_power += fft_symbols[i][tone_bins[hard_decision[i]]+j] 
-            if unselected_tone_power > 2*fft_symbols[i][len(fft_symbols[i])//2]:
-                for j in range(-2,3):
-                    fft_symbols[i][tone_bins[int(not hard_decision[i])]+j] = 0
+        llr2 = []
+        for i in range(fft_symbols.shape[0]):
+            if message_bits_for_sure[i] == 1:
+                if r0[i] > 5* noise_level:
+                    llr2.append(np.log(r0[i]/r1[i]))
+                else:
+                    llr2.append(0)
+            
             else:
-                for j in range(-2,3):
-                    fft_symbols[i][tone_bins[int(not hard_decision[i])]+j] *= (1-self.conf.ALPHA) 
-                    fft_symbols[i][tone_bins[hard_decision[i]]+j] = 0
+                if r1[i] > 5* noise_level:
+                    llr2.append(np.log(r1[i]/r0[i]))
+                else:
+                    llr2.append(0)
+                    
+                
             
 
             # fft_symbols[i][tone_bins[hard_decision[i]]] -= (1-self.conf.ALPHA)*fft_symbols[i][tone_bins[hard_decision[i]]] - self.conf.ALPHA*fft_symbols[i][tone_bins[int(not hard_decision[i])]]
