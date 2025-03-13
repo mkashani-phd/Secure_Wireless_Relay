@@ -222,25 +222,72 @@ class Demodulation:
 
         
 
-        fft_symbols = np.fft.fft(symbols.reshape(n_symbols, symbol_length), axis=1)
+        fft_symbols = np.array(np.abs(np.fft.fft(symbols.reshape(n_symbols, symbol_length), axis=1)), dtype=np.float32)
+
+        plt.figure(figsize=(10,30), dpi=80)
+        plt.imshow(fft_symbols[320:360,:], aspect='auto')
+        plt.title("FFT of the received symbols", fontsize=40)
+        plt.xlabel("Symbol index", fontsize=20)
+        plt.ylabel("Magnitude", fontsize=20)
+        plt.colorbar()
+
+
+
         # Extract the magnitudes at the two tone bins.
         # r0 corresponds to the first tone and r1 to the second tone.
-        r0 = np.abs(fft_symbols[:, tone_bins[0]])
-        r1 = np.abs(fft_symbols[:, tone_bins[1]])
+        r0 = fft_symbols[:, tone_bins[0]-2] + fft_symbols[:, tone_bins[0]-1] + fft_symbols[:, tone_bins[0]] + fft_symbols[:, tone_bins[0] + 1] + fft_symbols[:, tone_bins[0] + 2]
+        r1 = fft_symbols[:, tone_bins[1]-2] + fft_symbols[:, tone_bins[1]-1] + fft_symbols[:, tone_bins[1]] + fft_symbols[:, tone_bins[1] + 1] + fft_symbols[:, tone_bins[1] + 2]
         
         # Compute the amplitude factor from the signal energy.
-        energy = np.average(np.abs(signal)**2)
-        A = np.sqrt(energy)
+        E = np.average(signal**2)
+
         
-        llrs = 2*A*(r1 - r0) / noise_level
+        llrs = np.log(r0/(r1 + noise_level))
 
         plt.figure(figsize=(10,5), dpi=80)
         plt.stem(llrs)
         plt.title("LLRs with superposition alpha = 1", fontsize=40)
         plt.xlabel("Symbol index", fontsize=20)
         plt.ylabel("LLR", fontsize=20)
+
+
+
+        ######## beta ################
+        # subtracting power of the hard decision according to the hard decision in the fft for the llr
+        for i in range(len(fft_symbols)):
+            unselected_tone_power = 0
+            for j in range(-2,3):    
+                unselected_tone_power += fft_symbols[i][tone_bins[hard_decision[i]]+j] 
+            if unselected_tone_power > 2*fft_symbols[i][len(fft_symbols[i])//2]:
+                for j in range(-2,3):
+                    fft_symbols[i][tone_bins[int(not hard_decision[i])]+j] = 0
+            else:
+                for j in range(-2,3):
+                    fft_symbols[i][tone_bins[int(not hard_decision[i])]+j] *= (1-self.conf.ALPHA) 
+                    fft_symbols[i][tone_bins[hard_decision[i]]+j] = 0
+            
+
+            # fft_symbols[i][tone_bins[hard_decision[i]]] -= (1-self.conf.ALPHA)*fft_symbols[i][tone_bins[hard_decision[i]]] - self.conf.ALPHA*fft_symbols[i][tone_bins[int(not hard_decision[i])]]
+        # fft_symbols += np.abs(np.min(fft_symbols))
+        plt.figure(figsize=(10,30), dpi=80)
+        plt.imshow(fft_symbols[320:360,:], aspect='auto')
+        plt.title("FFT of the received symbols", fontsize=40)
+        plt.xlabel("Symbol index", fontsize=20)
+        plt.ylabel("Magnitude", fontsize=20)
+        plt.colorbar()
         plt.show()
 
+        r0 = fft_symbols[:, tone_bins[0]-2] + fft_symbols[:, tone_bins[0]-1] + fft_symbols[:, tone_bins[0]] + fft_symbols[:, tone_bins[0] + 1] + fft_symbols[:, tone_bins[0] + 2]
+        r1 = fft_symbols[:, tone_bins[1]-2] + fft_symbols[:, tone_bins[1]-1] + fft_symbols[:, tone_bins[1]] + fft_symbols[:, tone_bins[1] + 1] + fft_symbols[:, tone_bins[1] + 2]
+        
+        llrs = np.log(r0/r1)
+
+        plt.figure(figsize=(10,5), dpi=80)
+        plt.stem(llrs)
+        plt.title("LLRs cancelation alpha = 1", fontsize=40)
+        plt.xlabel("Symbol index", fontsize=20)
+        plt.ylabel("LLR", fontsize=20)
+        plt.show()
         
         return hard_decision, list(llrs)
 
@@ -526,13 +573,7 @@ class PostProcessing:
             msg_llr = llr[index[0]:index[1]]   
             insert_data['llr_msg'] = msg_llr
 
-            msg_llr = [i /100 for i in msg_llr]
-            msg_llr = [ i -100 if i >0 else i + 100 for i in msg_llr]
-            plt.figure(figsize=(10,5), dpi=80)
-            plt.stem(msg_llr)
-            plt.title("LLRs with superposition alpha = 1", fontsize=40)
-            plt.show()
-            print("msg_llr: ", msg_llr)
+            
             
             # insert_data['mac_hard_decision'] = self.binary_list_to_hex(mac[0:256])
             # insert_data['success_verification'] = hmac.new(self.conf.MAC_KEY.encode('utf-8'), msg=insert_data['msg_hard_decision'].encode('utf-8'), digestmod='sha256').hexdigest() == insert_data['mac_hard_decision']
