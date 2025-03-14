@@ -1,15 +1,17 @@
-ACQ_TIME: 5
+ACQ_TIME: 2
+ALPHA: 1
 FREQ: 1900000000.0
 FREQ_DEVIATION_PRECENTAGE: 0.05
 IN_CHAMBER: false
 LINIENT: 10
+LPF_CUTOFF: 300000.0
 MAC_CODE_RATE: 0.3333333333333333
 MAC_KEY: key
 MIMO: false
-MIN_FRAME_SIZE: 194560.0
-MSG_CODE_RATE: 0.3333333333333333
-PAYLOAD: This message is the default payload for the tests, and is 1024 bits long.
-  It will be superposed with HMAC tag, that is 256 bits!
+MIN_FRAME_SIZE: 105200.0
+MSG_CODE_RATE: 1
+PAYLOAD: This message is the default payload for the tests, and is 1088 bits long.
+  It will be superposed with MAC tag of 256 bits with Rate= 1/3?
 PREAMBLE:
 - 1
 - 1
@@ -207,10 +209,11 @@ PREAMBLE:
 - 1
 - 1
 PREAMBLE_REPEAT: 15
-RX_GAIN: 70
+RX_GAIN: 89.8
 RX_RATE: 5000000.0
 SUPERPOSED: false
-TX_GAIN: 40
+TX_GAIN: 30
+TX_PAYLOAD_POWER_SCALE: 0.25
 TX_RATE: 1000000.0
 TX_SPS: 40
 WINDOW: 200

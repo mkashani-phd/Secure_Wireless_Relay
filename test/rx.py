@@ -202,6 +202,12 @@ class Demodulation:
         # llr for BFSK modulation is given by the following formula
         return ( np.average(np.power(np.abs(fft),2)) / noise )(E_f1-E_f2)
     
+    def hex_to_binary_list(self, hex_string):
+        binary_list = []
+        for hex_char in hex_string:
+            # Convert each hex character to a 4-bit binary string
+            binary_list.extend([int(bit) for bit in format(int(hex_char, 16), '04b')])
+        return binary_list
     
     
 
@@ -224,80 +230,103 @@ class Demodulation:
 
         
 
-        fft_symbols = np.array(np.power(np.fft.fft(symbols.reshape(n_symbols, symbol_length), axis=1),2), dtype=np.float32)
+        fft_symbols = np.array(np.power(np.abs(np.fft.fft(symbols.reshape(n_symbols, symbol_length), axis=1)),2), dtype=np.float32)
 
-        plt.figure(figsize=(10,30), dpi=80)
-        plt.imshow(fft_symbols[320:360,:], aspect='auto')
-        plt.title("FFT of the received symbols", fontsize=40)
-        plt.xlabel("Symbol index", fontsize=20)
-        plt.ylabel("Magnitude", fontsize=20)
-        plt.colorbar()
+        # plt.figure(figsize=(10,30), dpi=80)
+        # plt.imshow(fft_symbols[320:360,:], aspect='auto')
+        # plt.title("FFT of the received symbols", fontsize=40)
+        # plt.xlabel("Symbol index", fontsize=20)
+        # plt.ylabel("Magnitude", fontsize=20)
+        # plt.colorbar()
 
 
 
         # Extract the magnitudes at the two tone bins.
         # r0 corresponds to the first tone and r1 to the second tone.
-        r0 = fft_symbols[:, tone_bins[0]-2] + fft_symbols[:, tone_bins[0]-1] + fft_symbols[:, tone_bins[0]] + fft_symbols[:, tone_bins[0] + 1] + fft_symbols[:, tone_bins[0] + 2]
-        r1 = fft_symbols[:, tone_bins[1]-2] + fft_symbols[:, tone_bins[1]-1] + fft_symbols[:, tone_bins[1]] + fft_symbols[:, tone_bins[1] + 1] + fft_symbols[:, tone_bins[1] + 2]
+        r0 = 0
+        for i in range(1):
+            r0 += fft_symbols[:, tone_bins[0] + i] 
+
+        r1 = 0
+        for i in range(1):
+            r1 += fft_symbols[:, tone_bins[1] + i]
         
-        # Compute the amplitude factor from the signal energy.
-        E = np.average(signal**2)
+        ffSize = fft_symbols.shape[1]
+        r_half = 0
+        for i in range(1):
+            r_half += fft_symbols[:, ffSize//2 + i]
+        
+
 
         
         llrs = np.log(r0/r1)
 
-        plt.figure(figsize=(10,5), dpi=80)
-        plt.stem(llrs)
-        plt.title("LLRs with superposition alpha = 1", fontsize=40)
-        plt.xlabel("Symbol index", fontsize=20)
-        plt.ylabel("LLR", fontsize=20)
+        index = self.detect_message_indices(received=list(hard_decision), preamble=self.conf.PREAMBLE, repeat=self.conf.PREAMBLE_REPEAT)
+
+        # plt.figure(figsize=(10,5), dpi=80)
+        # plt.stem(llrs[index[0]:index[1]])
+        # plt.stem(np.array(message_bits_for_sure)-.5, linefmt='r-', markerfmt='ro', basefmt='r-', label='message bits')
+        # plt.title("LLRs with superposition alpha = 1", fontsize=40)
+        # plt.xlabel("Symbol index", fontsize=20)
+        # plt.ylabel("LLR", fontsize=20)
 
 
 
         ######## beta ################
         # subtracting power of the hard decision according to the hard decision in the fft for the llr
         llr2 = []
-        for i in range(fft_symbols.shape[0]):
-            if message_bits_for_sure[i] == 1:
-                if r0[i] > 5* noise_level:
-                    llr2.append(np.log(r0[i]/r1[i]))
-                else:
-                    llr2.append(0)
+
+        for i in range(index[0],index[1]):
+            # plt.figure(figsize=(10,5), dpi=80)
+            # plt.plot(fft_symbols[i+index[0]])
+            # plt.title("FFT of the received symbols", fontsize=40)
+            # plt.xlabel("Symbol index", fontsize=20)
+            # plt.ylabel("Magnitude", fontsize=20)
             
-            else:
-                if r1[i] > 5* noise_level:
-                    llr2.append(np.log(r1[i]/r0[i]))
+            if message_bits_for_sure[i-index[0]] == 1:                
+
+                if r1[i] > self.conf.ALPHA * r0[i]:
+                    llr2.append(np.log(r_half[i]/r1[i] ))
                 else:
-                    llr2.append(0)
+                    llr2.append(np.log(r0[i]/(self.conf.ALPHA * r1[i]) ))
+            else:
+                if r0[i] > self.conf.ALPHA * r1[i]:
+                    llr2.append(np.log(r0[i]/r_half[i]))
+                else:
+                    llr2.append(np.log((self.conf.ALPHA * r0[i])/r1[i]))
                     
                 
             
+        tag = hmac.new(self.conf.MAC_KEY.encode('utf-8'), msg=self.conf.PAYLOAD.encode('utf-8'), digestmod='sha256').hexdigest()
+        tag = self.hex_to_binary_list(tag)
+        encoded_tag = cc.generate_5g_codeword_bg2(np.array(tag ,dtype=np.int32), self.conf.MAC_CODE_RATE)
 
-            # fft_symbols[i][tone_bins[hard_decision[i]]] -= (1-self.conf.ALPHA)*fft_symbols[i][tone_bins[hard_decision[i]]] - self.conf.ALPHA*fft_symbols[i][tone_bins[int(not hard_decision[i])]]
-        # fft_symbols += np.abs(np.min(fft_symbols))
-        plt.figure(figsize=(10,30), dpi=80)
-        plt.imshow(fft_symbols[320:360,:], aspect='auto')
-        plt.title("FFT of the received symbols", fontsize=40)
-        plt.xlabel("Symbol index", fontsize=20)
-        plt.ylabel("Magnitude", fontsize=20)
-        plt.colorbar()
-        plt.show()
-
-        r0 = fft_symbols[:, tone_bins[0]-2] + fft_symbols[:, tone_bins[0]-1] + fft_symbols[:, tone_bins[0]] + fft_symbols[:, tone_bins[0] + 1] + fft_symbols[:, tone_bins[0] + 2]
-        r1 = fft_symbols[:, tone_bins[1]-2] + fft_symbols[:, tone_bins[1]-1] + fft_symbols[:, tone_bins[1]] + fft_symbols[:, tone_bins[1] + 1] + fft_symbols[:, tone_bins[1] + 2]
+        print(self.binary_list_to_hex(cc.decode_llr(np.array(llr2), cc.get_5G_ldpc_params("msg: 256 code_rate: "+str(np.round(self.conf.MAC_CODE_RATE,2))+".txt"))[0]))
+        print(self.binary_list_to_hex(cc.decode_llr(np.array(llrs[index[0]: index[1]]), cc.get_5G_ldpc_params("msg: 256 code_rate: "+str(np.round(self.conf.MAC_CODE_RATE,2))+".txt"))[0]))
         
-        llrs = np.log(r0/r1)
+        
 
         plt.figure(figsize=(10,5), dpi=80)
-        plt.stem(llrs)
+        plt.stem(llr2)
+        plt.stem(np.array(encoded_tag)-.5, linefmt='r-', markerfmt='ro', basefmt='r-', label='message bits')
         plt.title("LLRs cancelation alpha = 1", fontsize=40)
         plt.xlabel("Symbol index", fontsize=20)
         plt.ylabel("LLR", fontsize=20)
         plt.show()
         
-        return hard_decision, list(llrs)
+        return hard_decision, llr2
 
-
+    def binary_list_to_hex(self, binary_list):
+        # Ensure the length of the list is a multiple of 4
+        if len(binary_list) % 4 != 0:
+            raise ValueError("The length of the binary list must be a multiple of 4.")
+        
+        # Group into chunks of 4 bits and convert to hex
+        hex_string = ''.join(
+            hex(int(''.join(map(str, binary_list[i:i+4])), 2))[2:]  # Convert binary to hex and remove "0x"
+            for i in range(0, len(binary_list), 4)
+        )
+        return hex_string.lower()  # Convert to uppercase if desired
 
     def decode(self, frame, noise):
     # compute sliding fft of the signal every 40 samples where the peak is 1 and the rest 0
@@ -453,7 +482,7 @@ class PostProcessing:
         return self.noiseByIndex(self.TotalNoiseIndex[noise_nr])
 
     def frameFinder(self, samples):
-        plt.plot(np.abs(samples))
+        # plt.plot(np.abs(samples))
         test_list = np.nonzero(samples)
         noise_index = []
         framesIndex = []
@@ -576,8 +605,8 @@ class PostProcessing:
             print("msg: ", insert_data['msg_hard_decision'])
 
 
-            msg_llr = llr[index[0]:index[1]]   
-            insert_data['llr_msg'] = msg_llr
+            # msg_llr = llr[index[0]:index[1]]   
+            # insert_data['llr_msg'] = msg_llr
 
             
             
@@ -586,7 +615,7 @@ class PostProcessing:
 
 
 
-            mac = self.demod.soft_decision(msg_llr, H_param=cc.get_5G_ldpc_params("msg: 256 code_rate: "+str(np.round(self.conf.MAC_CODE_RATE,2))+".txt"))
+            mac = self.demod.soft_decision(llr, H_param=cc.get_5G_ldpc_params("msg: 256 code_rate: "+str(np.round(self.conf.MAC_CODE_RATE,2))+".txt"))
             if mac is None:
                 print("ldpc decoding failed!")
                 insert_data['error'] = 'ldpc decoding failed!'
