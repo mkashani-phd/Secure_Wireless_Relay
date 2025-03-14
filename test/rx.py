@@ -402,13 +402,6 @@ class Demodulation:
         return received_start + len(preamble), received_end + len(received)-(cooefficient*len(preamble))
 
 
-
-    
-    def soft_decision(self, llr, H_param):
-        # try:
-        return cc.decode_llr(np.array(llr), H_param)[0]
-        # except:
-        #     return None
     
     def ldpc_decode(self, llr_msg, llr_mac):
         msg_H_param = cc.get_5G_ldpc_params("msg: 1024 code_rate: "+str(np.round(self.conf.MSG_CODE_RATE,2))+".txt")
@@ -605,17 +598,8 @@ class PostProcessing:
             print("msg: ", insert_data['msg_hard_decision'])
 
 
-            # msg_llr = llr[index[0]:index[1]]   
-            # insert_data['llr_msg'] = msg_llr
 
-            
-            
-            # insert_data['mac_hard_decision'] = self.binary_list_to_hex(mac[0:256])
-            # insert_data['success_verification'] = hmac.new(self.conf.MAC_KEY.encode('utf-8'), msg=insert_data['msg_hard_decision'].encode('utf-8'), digestmod='sha256').hexdigest() == insert_data['mac_hard_decision']
-
-
-
-            mac = self.demod.soft_decision(llr, H_param=cc.get_5G_ldpc_params("msg: 256 code_rate: "+str(np.round(self.conf.MAC_CODE_RATE,2))+".txt"))
+            mac = cc.decode_LDPC(llr, message_length=256)
             if mac is None:
                 print("ldpc decoding failed!")
                 insert_data['error'] = 'ldpc decoding failed!'

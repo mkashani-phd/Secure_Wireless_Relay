@@ -64,7 +64,7 @@ def test():
 
 
     # payload_bits = cc.generate_5g_codeword_bg2(payload_bits, conf.MSG_CODE_RATE)
-    MAC_bits = cc.generate_5g_codeword_bg2(MAC_bits, conf.MAC_CODE_RATE)
+    MAC_bits = cc.encode_LDPC(MAC_bits, 2048)
 
     payload_bits = payload_bits[:MAC_bits.shape[0]]
     print(payload_bits.shape, MAC_bits.shape)

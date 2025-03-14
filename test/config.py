@@ -4,7 +4,7 @@ import hmac
 import time
 
 # a 1088 bit message
-PAYLOAD   = "This message is the default payload for the tests, and is 1088 bits long. It will be superposed with MAC tag of 256 bits with Rate= 1/3?"
+PAYLOAD   = "This message is the default payload for the tests, and is 1088 bits long. It will be superposed with MAC tag of 256 bits with Rate= 1/3?This message is the default payload for the tests, and is 1088 bits long. It will be superposed with MAC tag of 256 bits with Rate= 1/3?This message is the default payload for the tests, and is 1088 bits long. It will be superposed with MAC tag of 256 bits with Rate= 1/3?"
 
 class CONFIG:
     def __init__(self, config_yaml_path = None):
