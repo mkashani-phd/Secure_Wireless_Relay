@@ -297,18 +297,26 @@ class Demodulation:
                     
                 
             
-        tag = hmac.new(self.conf.MAC_KEY.encode('utf-8'), msg=self.conf.PAYLOAD.encode('utf-8'), digestmod='sha256').hexdigest()
-        tag = self.hex_to_binary_list(tag)
-        encoded_tag = cc.generate_5g_codeword_bg2(np.array(tag ,dtype=np.int32), self.conf.MAC_CODE_RATE)
+        tag_hex = hmac.new(self.conf.MAC_KEY.encode('utf-8'), msg=self.conf.PAYLOAD.encode('utf-8'), digestmod='sha256').hexdigest()
+        tag = self.hex_to_binary_list(tag_hex)
+        encoded_tag = cc.encode_LDPC(tag, 2048)
 
-        print(self.binary_list_to_hex(cc.decode_llr(np.array(llr2), cc.get_5G_ldpc_params("msg: 256 code_rate: "+str(np.round(self.conf.MAC_CODE_RATE,2))+".txt"))[0]))
-        print(self.binary_list_to_hex(cc.decode_llr(np.array(llrs[index[0]: index[1]]), cc.get_5G_ldpc_params("msg: 256 code_rate: "+str(np.round(self.conf.MAC_CODE_RATE,2))+".txt"))[0]))
+        print(self.binary_list_to_hex(tag))
+        print(len(llr2))
+        print(list(cc.decode_LDPC(llrs[index[0]:index[1]],256))==list(tag))
+
+        print(list(cc.decode_LDPC(10*(np.array(encoded_tag)-.5), 256)) == list(tag))
+
+
+
+        # print(self.binary_list_to_hex(cc.decode_llr(np.array(llr2), cc.get_5G_ldpc_params("msg: 256 code_rate: "+str(np.round(self.conf.MAC_CODE_RATE,2))+".txt"))[0]))
+        # print(self.binary_list_to_hex(cc.decode_llr(np.array(llrs[index[0]: index[1]]), cc.get_5G_ldpc_params("msg: 256 code_rate: "+str(np.round(self.conf.MAC_CODE_RATE,2))+".txt"))[0]))
         
         
 
         plt.figure(figsize=(10,5), dpi=80)
-        plt.stem(llr2)
-        plt.stem(np.array(encoded_tag)-.5, linefmt='r-', markerfmt='ro', basefmt='r-', label='message bits')
+        plt.stem(llrs[index[0]:index[1]])
+        plt.stem(5*(np.array(encoded_tag)-.5), linefmt='r-', markerfmt='ro', basefmt='r-', label='message bits')
         plt.title("LLRs cancelation alpha = 1", fontsize=40)
         plt.xlabel("Symbol index", fontsize=20)
         plt.ylabel("LLR", fontsize=20)

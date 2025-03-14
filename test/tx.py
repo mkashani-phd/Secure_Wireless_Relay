@@ -60,6 +60,7 @@ def test():
 
     payload_bits = np.array(string_to_bits(conf.PAYLOAD))
     MAC = hmac.new(conf.MAC_KEY.encode('utf-8'), msg=conf.PAYLOAD.encode('utf-8'), digestmod='sha256').hexdigest()
+    print(MAC)
     MAC_bits = np.array(hex_to_binary_list(MAC))
 
 
