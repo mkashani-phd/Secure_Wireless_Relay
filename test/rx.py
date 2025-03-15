@@ -212,7 +212,7 @@ class Demodulation:
     
 
 
-    def compute_hard_desicion_and_llr(self, signal, symbol_length, tone_bins, noise_level, message_bits_for_sure = None):
+    def compute_hard_desicion_and_rs(self, signal, symbol_length, tone_bins, noise_level, message_bits_for_sure = None):
         if message_bits_for_sure is None:
             message_bits_for_sure = self.string_to_bits(self.conf.PAYLOAD)
 
@@ -232,24 +232,13 @@ class Demodulation:
 
         fft_symbols = np.array(np.power(np.abs(np.fft.fft(symbols.reshape(n_symbols, symbol_length), axis=1)),2), dtype=np.float32)
 
-        # plt.figure(figsize=(10,30), dpi=80)
-        # plt.imshow(fft_symbols[320:360,:], aspect='auto')
-        # plt.title("FFT of the received symbols", fontsize=40)
-        # plt.xlabel("Symbol index", fontsize=20)
-        # plt.ylabel("Magnitude", fontsize=20)
-        # plt.colorbar()
-
-
-
-        # Extract the magnitudes at the two tone bins.
-        # r0 corresponds to the first tone and r1 to the second tone.
         r0 = 0
         for i in range(1):
-            r0 += fft_symbols[:, tone_bins[0] + i] 
+            r0 += fft_symbols[:, tone_bins[1] + i] 
 
         r1 = 0
         for i in range(1):
-            r1 += fft_symbols[:, tone_bins[1] + i]
+            r1 += fft_symbols[:, tone_bins[0] + i]
         
         ffSize = fft_symbols.shape[1]
         r_half = 0
@@ -257,72 +246,25 @@ class Demodulation:
             r_half += fft_symbols[:, ffSize//2 + i]
         
 
-
-        
-        llrs = np.log(r0/r1)
-
-        index = self.detect_message_indices(received=list(hard_decision), preamble=self.conf.PREAMBLE, repeat=self.conf.PREAMBLE_REPEAT)
-
-        # plt.figure(figsize=(10,5), dpi=80)
-        # plt.stem(llrs[index[0]:index[1]])
-        # plt.stem(np.array(message_bits_for_sure)-.5, linefmt='r-', markerfmt='ro', basefmt='r-', label='message bits')
-        # plt.title("LLRs with superposition alpha = 1", fontsize=40)
-        # plt.xlabel("Symbol index", fontsize=20)
-        # plt.ylabel("LLR", fontsize=20)
-
-
-
-        ######## beta ################
-        # subtracting power of the hard decision according to the hard decision in the fft for the llr
-        llr2 = []
-
-        for i in range(index[0],index[1]):
-            # plt.figure(figsize=(10,5), dpi=80)
-            # plt.plot(fft_symbols[i+index[0]])
-            # plt.title("FFT of the received symbols", fontsize=40)
-            # plt.xlabel("Symbol index", fontsize=20)
-            # plt.ylabel("Magnitude", fontsize=20)
-            
-            if message_bits_for_sure[i-index[0]] == 1:                
+        return hard_decision, [r0,r1,r_half]
+    
+    def successive_cancellation(self, msg_decoded_bits,  rs , index):
+        r0,r1,r_half = rs
+        SC_llr = []
+        for i in range(index[0],index[1]):            
+            if msg_decoded_bits[i] == 0:                
 
                 if r1[i] > self.conf.ALPHA * r0[i]:
-                    llr2.append(np.log(r_half[i]/r1[i] ))
+                    SC_llr.append(np.log(r_half[i]/r1[i] ))
                 else:
-                    llr2.append(np.log(r0[i]/(self.conf.ALPHA * r1[i]) ))
+                    SC_llr.append(np.log(r0[i]/(self.conf.ALPHA * r1[i]) ))
             else:
                 if r0[i] > self.conf.ALPHA * r1[i]:
-                    llr2.append(np.log(r0[i]/r_half[i]))
+                    SC_llr.append(np.log(r0[i]/r_half[i]))
                 else:
-                    llr2.append(np.log((self.conf.ALPHA * r0[i])/r1[i]))
-                    
-                
-            
-        tag_hex = hmac.new(self.conf.MAC_KEY.encode('utf-8'), msg=self.conf.PAYLOAD.encode('utf-8'), digestmod='sha256').hexdigest()
-        tag = self.hex_to_binary_list(tag_hex)
-        encoded_tag = cc.encode_LDPC(tag, 2048)
-
-        print(self.binary_list_to_hex(tag))
-        print(len(llr2))
-        print(list(cc.decode_LDPC(llrs[index[0]:index[1]],256))==list(tag))
-
-        print(list(cc.decode_LDPC(10*(np.array(encoded_tag)-.5), 256)) == list(tag))
-
-
-
-        # print(self.binary_list_to_hex(cc.decode_llr(np.array(llr2), cc.get_5G_ldpc_params("msg: 256 code_rate: "+str(np.round(self.conf.MAC_CODE_RATE,2))+".txt"))[0]))
-        # print(self.binary_list_to_hex(cc.decode_llr(np.array(llrs[index[0]: index[1]]), cc.get_5G_ldpc_params("msg: 256 code_rate: "+str(np.round(self.conf.MAC_CODE_RATE,2))+".txt"))[0]))
+                    SC_llr.append(np.log((self.conf.ALPHA * r0[i])/r1[i]))
         
-        
-
-        plt.figure(figsize=(10,5), dpi=80)
-        plt.stem(llrs[index[0]:index[1]])
-        plt.stem(5*(np.array(encoded_tag)-.5), linefmt='r-', markerfmt='ro', basefmt='r-', label='message bits')
-        plt.title("LLRs cancelation alpha = 1", fontsize=40)
-        plt.xlabel("Symbol index", fontsize=20)
-        plt.ylabel("LLR", fontsize=20)
-        plt.show()
-        
-        return hard_decision, llr2
+        return SC_llr
 
     def binary_list_to_hex(self, binary_list):
         # Ensure the length of the list is a multiple of 4
@@ -340,7 +282,7 @@ class Demodulation:
     # compute sliding fft of the signal every 40 samples where the peak is 1 and the rest 0
         # lpf
         frame = self.butter(frame)
-        return self.compute_hard_desicion_and_llr(frame, self.conf.WINDOW, [10,190], np.average(np.abs(self.butter(noise))**2))
+        return self.compute_hard_desicion_and_rs(frame, self.conf.WINDOW, [10,190], np.average(np.abs(self.butter(noise))**2))
         
 
     
@@ -352,7 +294,7 @@ class Demodulation:
         print("noise power: ", noise_power)
         print("payload power: ", payload_power)
 
-        SNR = 10*np.log10( np.average( (payload_power  / noise_power) -1))
+        SNR = 10*np.log10( (payload_power  / noise_power) -1)
         return SNR
 
 
@@ -454,7 +396,7 @@ class PostProcessing:
 
         self.IQsamples = np.fromfile(file, np.complex64)
 
-        import matplotlib.pyplot as plt
+        # import matplotlib.pyplot as plt
         # plt.figure(figsize=(20,10), dpi=80)
         # plt.plot(np.abs(self.IQsamples))
         # plt.show()
@@ -473,17 +415,17 @@ class PostProcessing:
 
 
     def frameByIndex(self,index):
-        return self.IQsamples[index[0]:index[1]]
+        return self.IQsamples[int(index[0]):int(index[1])]
     def frameByNumber(self,frame_nr:int):
         return self.frameByIndex(self.TotalFramesIndex[frame_nr])
     
     def noiseByIndex(self,index):
-        return self.IQsamples[index[0]:index[1]]
+        return self.IQsamples[int(index[0]):int(index[1])]
     def noiseByNumber(self,noise_nr:int):
         return self.noiseByIndex(self.TotalNoiseIndex[noise_nr])
 
     def frameFinder(self, samples):
-        # plt.plot(np.abs(samples))
+
         test_list = np.nonzero(samples)
         noise_index = []
         framesIndex = []
@@ -491,13 +433,14 @@ class PostProcessing:
 
         for k, g in groupby(enumerate(test_list[0]), lambda ix: ix[0]-ix[1]):
             temp = list(map(itemgetter(1), g))
+
             if len(temp)== noise_nr_batches* noise_batch_size_len: #hard coded but must be changed
                 noise_index.append([temp[0],temp[-1]])
                 frame = False
                 continue
             elif len(temp)< self.conf.MIN_FRAME_SIZE:
                 continue
-
+            
             framesIndex.append([temp[0],temp[-1]])
 
         return np.array(framesIndex), np.array(noise_index*len(framesIndex))
@@ -588,11 +531,14 @@ class PostProcessing:
             
             # calculate the frame power avoiding the preamble
             payload = frame[int(len(self.conf.PREAMBLE)*self.conf.PREAMBLE_REPEAT*self.conf.TX_SPS * 1.2) : int(-1*len(self.conf.PREAMBLE)*self.conf.PREAMBLE_REPEAT*self.conf.TX_SPS * 1.2)]
+            if len(payload) == 0:
+                print("problem with the frame")
+                continue
             insert_data['SNR'] = self.demod.getSNR(payload, noise)
             print("SNR: ", insert_data['SNR'])
 
 
-            hard_decision,llr = self.demod.decode(frame, noise)
+            hard_decision,rs = self.demod.decode(frame, noise)
             
             index = self.demod.detect_message_indices(received=list(hard_decision), preamble=self.conf.PREAMBLE, repeat=self.conf.PREAMBLE_REPEAT)
             if index[0] is None or index[1] is None:
@@ -605,20 +551,19 @@ class PostProcessing:
             insert_data['msg_hard_decision'] = self.bits_to_string(msg_hard_decision)
             print("msg: ", insert_data['msg_hard_decision'])
 
-
-
-            mac = cc.decode_LDPC(llr, message_length=256)
+            Successive_Cancellation_llr = self.demod.successive_cancellation(hard_decision, rs, index)
+            mac = cc.decode_LDPC(Successive_Cancellation_llr, message_length=256)
             if mac is None:
                 print("ldpc decoding failed!")
                 insert_data['error'] = 'ldpc decoding failed!'
                 collection.insert_one(insert_data)
                 continue
-            insert_data['rceived_mac_ldpc_hex'] = self.binary_list_to_hex(mac[0:256])
-            # insert_data['ldpc_success_verification'] = hmac.new(self.conf.MAC_KEY.encode('utf-8'), msg=insert_data['rceived_msg_ldpc_string'].encode('utf-8'), digestmod='sha256').hexdigest() == insert_data['rceived_mac_ldpc_hex']
+            insert_data['rceived_mac_ldpc_hex'] = self.binary_list_to_hex(mac)
+            insert_data['ldpc_success_verification'] = insert_data['rceived_mac_ldpc_hex'] == '3776b3b21e2b54891a0731a27165ff9fbfed670657998d1d37acec5b41daedb2'
             
             print('')
             print(insert_data['rceived_mac_ldpc_hex'])
-            print('649cf0f60f9f7eef788f654956aa3c0186c8334e5f5f7780269a63ec2e292108')
+            print(insert_data['rceived_mac_ldpc_hex'] == '3776b3b21e2b54891a0731a27165ff9fbfed670657998d1d37acec5b41daedb2')
 
             print('')
 
@@ -639,7 +584,7 @@ def test():
 
     pp = PostProcessing(file=files)
     if(pp.check()):
-        pp.push_to_db(collection = mydb['1D'])
+        pp.push_to_db(collection = mydb['1D_SC'])
 
 
 

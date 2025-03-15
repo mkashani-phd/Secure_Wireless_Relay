@@ -14,7 +14,7 @@ def main():
  
 
         t1.start()
-        time.sleep(.8)
+        time.sleep(1)
         t2.start()
 
 

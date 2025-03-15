@@ -94,9 +94,9 @@ def decode_LDPC(codeword_llr:list|np.ndarray, message_length:int):
 
     filename_paresed = parse_filename(filename)
 
-    minimum = min(codeword_llr)
+    maximum = max(codeword_llr)
     if K < filename_paresed['K_ldpc']:
-        codeword_llr[K:filename_paresed['K_ldpc']] = [minimum]* (filename_paresed['K_ldpc'] - K)
+        codeword_llr[K:filename_paresed['K_ldpc']] = [maximum]* (filename_paresed['K_ldpc'] - K)
 
 
 
