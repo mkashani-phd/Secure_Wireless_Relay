@@ -16,7 +16,7 @@ import queue
 import matplotlib.pyplot as plt
 
 noise_batch_size_len = 2040
-noise_nr_batches = 10
+noise_nr_batches = 100
 
 
 class RX:
@@ -127,7 +127,7 @@ class RX:
                     if (cnt:=cnt+1) < self.conf.LINIENT:
                        recv_buffer[0].tofile(f)  
                     else:
-                        np.zeros(batch_size).tofile(f)
+                        np.zeros(20).tofile(f)
 
                 
 
@@ -289,7 +289,9 @@ class Demodulation:
     def getSNR(self, payload, noise):
         # calculate the frame power avoiding the preamble
 
-        noise_power = np.average(np.abs(self.butter(noise))**2)
+        noise_power = np.var(self.butter(noise))
+        # noise_power = np.average(np.abs(self.butter(noise))**2)
+
         payload_power = np.average(np.abs(self.butter(payload))**2)
         print("noise power: ", noise_power)
         print("payload power: ", payload_power)
@@ -396,10 +398,14 @@ class PostProcessing:
 
         self.IQsamples = np.fromfile(file, np.complex64)
 
-        # import matplotlib.pyplot as plt
-        # plt.figure(figsize=(20,10), dpi=80)
-        # plt.plot(np.abs(self.IQsamples))
-        # plt.show()
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(20,10), dpi=80)
+        plt.xticks(fontsize=30)
+        plt.yticks(fontsize=30)
+        plt.xlabel('Samples', fontsize=30)
+        plt.ylabel('|IQ|^2', fontsize=30)
+        plt.plot(np.abs(self.IQsamples[:2000000])**2)
+        plt.show()
 
         self.TotalFramesIndex, self.TotalNoiseIndex = self.frameFinder(self.IQsamples)
 
