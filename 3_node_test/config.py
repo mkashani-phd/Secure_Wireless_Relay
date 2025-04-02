@@ -25,11 +25,17 @@ class CONFIG:
                 self.config = yaml.safe_load(stream)
             except yaml.YAMLError as exc:
                 print(exc)
+
+        self.SOURCE = self.config['SOURCE']
+        self.DESTINATION = self.config['DESTINATION']
+        self.RELAY = self.config['RELAY']
+
         self.MAC_KEY = self.config['MAC_KEY']
 
         self.FREQ = self.config['FREQ']
         self.TX_RATE = self.config['TX_RATE']
         self.TX_GAIN = self.config['TX_GAIN']
+        self.TX_RELAY_GAIN = self.config['TX_RELAY_GAIN']
         self.TX_PAYLOAD_POWER_SCALE = self.config['TX_PAYLOAD_POWER_SCALE']
         self.TX_SPS = self.config['TX_SPS']
 
@@ -37,10 +43,11 @@ class CONFIG:
 
         self.RX_RATE = self.config['RX_RATE']
         self.RX_GAIN = self.config['RX_GAIN']
+        self.RX_RELAY_GAIN = self.config['RX_RELAY_GAIN']
         self.LPF_CUTOFF = self.config['LPF_CUTOFF']
         self.ACQ_TIME = self.config['ACQ_TIME']
         self.MIMO = self.config['MIMO']
-        self.CHANNEL = [0] if not self.MIMO else [0,1]
+        self.CHANNEL = [0]
         self.LINIENT = self.config['LINIENT']
 
 
@@ -92,24 +99,31 @@ class CONFIG:
 
     def create_default_config(self,default_config_yaml_path = "default_config.yaml"):
         config = {}
+
+        config['SOURCE'] = "8000169"
+        config['DESTINATION'] = "E3R10Z5NW"
+        config['RELAY'] = "8000182"
+
         config['MAC_KEY'] = "key"
         config['FREQ'] = 1.9e9
 
         config['TX_RATE'] = 1e6
-        config['TX_GAIN'] = 30 # max gain 89.8
+        config['TX_GAIN'] = 50 # max gain 89.8
+        config['TX_RELAY_GAIN'] = 50 # max gain 31.5
         config['TX_SPS'] = 40
 
         config['TX_PAYLOAD_POWER_SCALE'] = 1/4
         config['ALPHA'] = 0.2
 
         config['RX_RATE'] = 5e6
-        config['RX_GAIN'] = 89.8 # Automatic Gain Control "agc" max gain 76
+        config['RX_GAIN'] = 20.0 # Automatic Gain Control "agc" max gain 76
+        config['RX_RELAY_GAIN'] = 60.0 # max gain 31.5
         # aviod the agc if the SNR calculation is needed
         config['LPF_CUTOFF'] = 3e5
 
         config['LINIENT'] = 10
         config['MIMO'] = False
-        config['ACQ_TIME'] = 2
+        config['ACQ_TIME'] = 4
         config['IN_CHAMBER'] = False
 
 
