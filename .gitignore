@@ -1,0 +1,2 @@
+# Ignore the __recording_cache__ folder in the src directory
+src/__recording_cache__/
