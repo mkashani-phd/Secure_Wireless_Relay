@@ -1,5 +1,5 @@
 import pymongo.collection
-import uhd, time, config, os
+import uhd, time, os
 from operator import itemgetter
 from itertools import groupby
 import scipy.signal 
@@ -8,12 +8,12 @@ import numpy as np
 import pymongo
 import datetime 
 import copy
-import channelCoding as cc
-import hmac
-import bson
-import queue
+
 
 import matplotlib.pyplot as plt
+
+from . import config
+from . import channelCoding as cc
 
 
 class RX:
@@ -203,43 +203,6 @@ class Demodulation:
     
     
 
-
-    # def compute_hard_desicion_and_rs(self, signal, symbol_length, tone_bins, noise_level, message_bits_for_sure = None):
-    #     if message_bits_for_sure is None:
-    #         message_bits_for_sure = self.string_to_bits(self.conf.PAYLOAD)
-
-    #     offset = self.find_best_offset(signal, symbol_length, tone_bins)
-    #     print("offset: ", offset)
-
-    #     n_symbols = (len(signal) - offset) // symbol_length
-    #     symbols = signal[offset:n_symbols * symbol_length + offset]
-        
-
-    #     hard_decision = []
-    #     for i in range(0,len(symbols),symbol_length):
-    #         peak,fft  = self.fft_max_peak(symbols[i:i+symbol_length],symbol_length)
-    #         hard_decision.append(self.decision(peak=peak, threshold=symbol_length//2))
-
-        
-
-    #     fft_symbols = np.array(np.power(np.abs(np.fft.fft(symbols.reshape(n_symbols, symbol_length), axis=1)),2), dtype=np.float32)
-
-    #     r0 = 0
-    #     for i in range(1):
-    #         r0 += fft_symbols[:, tone_bins[1] + i] 
-
-    #     r1 = 0
-    #     for i in range(1):
-    #         r1 += fft_symbols[:, tone_bins[0] + i]
-        
-    #     ffSize = fft_symbols.shape[1]
-    #     r_half = 0
-    #     for i in range(1):
-    #         r_half += fft_symbols[:, ffSize//2 + i]
-        
-
-    #     return hard_decision, [r0,r1,r_half]
-
     def compute_hard_desicion_and_rs(self, signal, symbol_length, tone_bins, message_bits_for_sure=None):
         if message_bits_for_sure is None:
             message_bits_for_sure = self.string_to_bits(self.conf.PAYLOAD)
@@ -258,44 +221,34 @@ class Demodulation:
 
         # Compute FFT and power spectrum
         fft_symbols = np.fft.fft(symbols.reshape(n_symbols, symbol_length), axis=1)
-        preamble_len = int(len(self.conf.PREAMBLE))
-        start_index = int(1.15 * len(self.conf.PREAMBLE))
-        end_index = len(signal) - int(0.985 * len(self.conf.PREAMBLE))
-        fft_symbols = fft_symbols[:, start_index:end_index]
-        power_spectra = np.abs(fft_symbols) ** 2  # shape: (n_symbols, symbol_length)
 
 
-
-        # SNR calculation
-        signal_bins = tone_bins
-        all_bins = np.arange(symbol_length)
-        noise_bins = np.setdiff1d(all_bins, signal_bins)
-
-        signal_power = np.sum(power_spectra[:, signal_bins], axis=1)
-        noise_power = np.mean(power_spectra[:, noise_bins], axis=1)
-
-        # Avoid division by zero or invalid log10
-        noise_power = np.clip(noise_power, 1e-10, None)
-        snr_linear = signal_power / noise_power
-        snr_dB = 10 * np.log10(np.clip(snr_linear - 1, 1e-10, None))
-
-                # For legacy return values
+        # For legacy return values
         fft_symbols = np.array(np.power(np.abs(np.fft.fft(symbols.reshape(n_symbols, symbol_length), axis=1)),2), dtype=np.float32)
         r0 = 0
-        for i in range(1):
+        for i in range(-2,3):
             r0 += fft_symbols[:, tone_bins[1] + i] 
 
         r1 = 0
-        for i in range(1):
+        for i in range(-2,3):
             r1 += fft_symbols[:, tone_bins[0] + i]
         
         ffSize = fft_symbols.shape[1]
         r_half = 0
-        for i in range(1):
+        for i in range(-2,3):
             r_half += fft_symbols[:, ffSize//2 + i]
 
-        return hard_decision, [r0, r1, r_half], snr_dB
+        noise_r = fft_symbols[:, ffSize//2]*len(fft_symbols[0,:])
+        signal = np.sum(np.power(np.abs(fft_symbols),2), axis=1)
+        
+
+        return hard_decision, [r0, r1, r_half], SNR
     
+    
+    
+
+
+
     def successive_cancellation(self, msg_decoded_bits,  rs , index):
         r0,r1,r_half = rs
         SC_llr = []
@@ -428,31 +381,25 @@ class Demodulation:
 
 
 class PostProcessing:
-    def __init__(self,  file:str, conf:config.CONFIG = config.CONFIG(), demod:Demodulation = Demodulation()):
+    def __init__(self,  file:str, conf:config.CONFIG = config.CONFIG(), demod:Demodulation = Demodulation(), plot:bool = False):
         self.file = file
         self.conf = conf
         self.demod = demod
 
         self.IQsamples = np.fromfile(file, np.complex64)
-
-        import matplotlib.pyplot as plt
-        plt.figure(figsize=(20,10), dpi=80)
-        plt.xticks(fontsize=30)
-        plt.yticks(fontsize=30)
-        plt.xlabel('Samples', fontsize=30)
-        plt.ylabel('|IQ|^2', fontsize=30)
-        plt.plot(np.abs(self.IQsamples)**2)
-        plt.title("destination signal t0", fontsize=30)
-        plt.show()
+        if plot:
+            import matplotlib.pyplot as plt
+            plt.figure(figsize=(20,10), dpi=80)
+            plt.xticks(fontsize=30)
+            plt.yticks(fontsize=30)
+            plt.xlabel('Samples', fontsize=30)
+            plt.ylabel('|IQ|^2', fontsize=30)
+            plt.plot(np.abs(self.IQsamples)**2)
+            plt.title("destination signal t0", fontsize=30)
+            plt.show()
 
         self.TotalFramesIndex= self.frameFinder(self.IQsamples)
 
-
-        # self.zeroRemover(samples=self.IQsamples,framesIndex=framesIndex)  
-        # self.tindx = np.fromfile(self.file+".tindx", dtype=int, sep= ',')
-        # self.tindx = self.tindx.reshape(-1,2)
-
-        
 
     def __len__(self):
         return len(self.TotalFramesIndex)
@@ -462,40 +409,17 @@ class PostProcessing:
         return self.IQsamples[int(index[0]):int(index[1])]
     def frameByNumber(self,frame_nr:int):
         return self.frameByIndex(self.TotalFramesIndex[frame_nr])
-    
-    # def noiseByIndex(self,index):
-    #     return self.IQsamples[int(index[0]):int(index[1])]
-    # def noiseByNumber(self,noise_nr:int):
-    #     return self.noiseByIndex(self.TotalNoiseIndex[noise_nr])
 
     def frameFinder(self, samples):
-
         test_list = np.nonzero(samples)
         framesIndex = []
-
-
         for k, g in groupby(enumerate(test_list[0]), lambda ix: ix[0]-ix[1]):
             temp = list(map(itemgetter(1), g))
-
             if len(temp)< self.conf.MIN_FRAME_SIZE:
-                continue
-            
+                continue 
             framesIndex.append([temp[0],temp[-1]])
-
         return np.array(framesIndex)
 
-    # def zeroRemover(self, samples, framesIndex):
-    #     f = open(self.file,"wb")
-    #     f_time_index= open(self.file+".tindx","wb")
-
-    #     framesIndex.tofile(f_time_index,sep= ',')
-    #     for i,j in framesIndex:
-    #         frame = samples[i:j]
-    #         frame.tofile(f)
-    #         np.zeros(2,dtype=np.complex64).tofile(f)
-
-    #     f.close()
-    #     f_time_index.close()
 
     def check(self): 
         #check minimum number of the frames
@@ -541,97 +465,3 @@ class PostProcessing:
         )
         return hex_string.lower()  # Convert to uppercase if desired
 
-
-    
-    def push_to_db(self, collection: pymongo.collection.Collection):
-        for indx in range(len(self.TotalFramesIndex)):
-            print("\nProcessing frame: ", indx)
-
-            insert_data = copy.deepcopy(self.conf.config)
-            insert_data["TIME"] =  datetime.datetime.now()
-
-            frame = self.frameByNumber(indx)
-            # noise = self.noiseByNumber(indx)
-
-
-            # I = np.array(np.real(frame)).tobytes()
-            # Q = np.array(np.imag(frame)).tobytes()
-            # insert_data['I'], insert_data['Q'] = bson.binary.Binary(I), bson.binary.Binary(Q)
-            # insert_data['frame_dtype'] = 'float'
-            # insert_data['frame_shape'] = list(frame.shape)
- 
-
-            
-            # calculate the frame power avoiding the preamble
-            payload = frame[int(len(self.conf.PREAMBLE)*self.conf.PREAMBLE_REPEAT*self.conf.TX_SPS * 1.2) : int(-1*len(self.conf.PREAMBLE)*self.conf.PREAMBLE_REPEAT*self.conf.TX_SPS * 1.2)]
-            if len(payload) == 0:
-                print("problem with the frame")
-                continue
-            # 
-
-
-            hard_decision,rs, SNR = self.demod.decode(frame)
-            insert_data['SNR'] = np.average(SNR)
-            print("SNR: ", insert_data['SNR'])
-            
-            index = self.demod.detect_message_indices(received=list(hard_decision), preamble=self.conf.PREAMBLE, repeat=self.conf.PREAMBLE_REPEAT)
-            if index[0] is None or index[1] is None:
-                print("preamble not found!")
-                insert_data['error'] = 'premable not found!'
-                collection.insert_one(insert_data)
-                continue
-
-
-            msg_hard_decision = hard_decision[index[0]:index[1]]
-            Successive_Cancellation_llr = self.demod.successive_cancellation(hard_decision, rs, index)
-            try:
-                mac = cc.decode_LDPC(Successive_Cancellation_llr, message_length=256)
-            except:
-                # it is the message from the realy with no superposition
-                # the MAC is the last 256 bits of the message
-                mac = hard_decision[-256:]
-                # msg_hard_decision = hard_decision[:-256]
-            
-
-            insert_data['msg_hard_decision'] = self.bits_to_string(msg_hard_decision)
-            print("msg: ", insert_data['msg_hard_decision'])
-
-            if mac is None:
-                print("ldpc decoding failed!")
-                insert_data['error'] = 'ldpc decoding failed!'
-                collection.insert_one(insert_data)
-                continue
-            insert_data['rceived_mac_ldpc_hex'] = self.binary_list_to_hex(mac)
-            insert_data['ldpc_success_verification'] = insert_data['rceived_mac_ldpc_hex'] == '3776b3b21e2b54891a0731a27165ff9fbfed670657998d1d37acec5b41daedb2'
-            
-            print('')
-            print(insert_data['rceived_mac_ldpc_hex'])
-            print(insert_data['rceived_mac_ldpc_hex'] == '3776b3b21e2b54891a0731a27165ff9fbfed670657998d1d37acec5b41daedb2')
-
-            print('')
-
-            collection.insert_one(insert_data)
-
-
-
-        print("\nData pushed to the database ...")
-
-
-
-### tests
-def test():
-
-    myclient = pymongo.MongoClient("mongodb://localhost:27017/")
-    mydb = myclient["MAC_SUPERPOSITION"]
-
-    rx = RX()
-    files = rx.record()
-
-    pp = PostProcessing(file=files)
-    if(pp.check()):
-        pp.push_to_db(collection = mydb['1D_SC'])
-
-
-
-if __name__ == "__main__":
-    test()
