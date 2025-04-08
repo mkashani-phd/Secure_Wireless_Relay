@@ -65,7 +65,7 @@ class RX:
         self.usrp.set_time_now(uhd.types.TimeSpec(0.0)) # this should work well for syncing the MIMO channel
 
         streamer = self._config_streamer( chnls=self.conf.CHANNEL,spp=None)
-        batch_size, nr_batches = self._batch_init(streamer=  streamer, batch_size= None)
+        batch_size, nr_batches = self._batch_init(streamer=  streamer, batch_size= 1920)
         recv_buffer = np.zeros((len(self.conf.CHANNEL), batch_size), dtype=np.complex64)
         metadata = uhd.types.RXMetadata()
 
@@ -98,31 +98,34 @@ class RX:
         start = time.time()
         cnt = 4
         
-
-        for i in range(nr_batches ):
+        # Record 100 samples and calculate the average power as normal power
+        for i in range(100):
             streamer.recv(recv_buffer, metadata)
+
+        Noise = 0
+        cnt = 0
+        for i in range(1000):
+            Noise += np.mean(np.abs(recv_buffer[0]))
+            cnt += 1
+        Noise /= cnt
+
+
+        linient_counter = 0  # Counter to track leniency
+        for i in range(nr_batches):
+            streamer.recv(recv_buffer, metadata)
+            power = np.mean(np.abs(recv_buffer[0]))
             
-            # recv_buffer[0] = self.butter(recv_buffer[0], cutoff=0.5, Fs=self.conf.RX_RATE)
-            fft = np.abs(np.fft.fft(recv_buffer[0]))
-            if np.sum(
-                np.concatenate(
-                            [
-                            fft[1:int(self.conf.FREQ_DEVIATION_PRECENTAGE*len(fft))], 
-                            fft[int((1-self.conf.FREQ_DEVIATION_PRECENTAGE)*len(fft)):]
-                            ]
-                        )
-                    ) > 1.4*2*self.conf.FREQ_DEVIATION_PRECENTAGE*np.sum(fft[int(self.conf.FREQ_DEVIATION_PRECENTAGE*len(fft)): int((1-self.conf.FREQ_DEVIATION_PRECENTAGE)*len(fft))]):
-                
-                recv_buffer[0].tofile(f) 
-                cnt = 0   
+            if power > 1.1 * Noise:
+                recv_buffer[0].tofile(f)
+                linient_counter = self.conf.LINIENT  # Reset leniency counter
             else:
-                if (cnt:=cnt+1) < self.conf.LINIENT:
-                    recv_buffer[0].tofile(f)  
+                if linient_counter > 0:
+                    recv_buffer[0].tofile(f)  # Keep saving the buffer
+                    linient_counter -= 1
                 else:
-                    np.zeros(20).tofile(f)
+                    np.zeros(batch_size).tofile(f)  # Save zeros if leniency is exhausted
 
             
-
         duration = time.time() - start
         print("\n Recorded Time: " + str(duration))
         # Stop Stream
@@ -130,13 +133,11 @@ class RX:
         f.close()
         return file
     
-        
+    def butter(self,input):
+        fltr = scipy.signal.butter(30, self.conf.LPF_CUTOFF, 'low', analog=False, output='sos',fs=self.conf.RX_RATE)
+        return scipy.signal.sosfilt(fltr, input) 
 
-
-
-
-
-
+    
 
 
 class Demodulation:
@@ -208,7 +209,7 @@ class Demodulation:
             message_bits_for_sure = self.string_to_bits(self.conf.PAYLOAD)
 
         offset = self.find_best_offset(signal, symbol_length, tone_bins)
-        print("offset: ", offset)
+        # print("offset: ", offset)
 
         n_symbols = (len(signal) - offset) // symbol_length
         symbols = signal[offset:n_symbols * symbol_length + offset]
@@ -238,8 +239,9 @@ class Demodulation:
         for i in range(-2,3):
             r_half += fft_symbols[:, ffSize//2 + i]
 
-        noise_r = fft_symbols[:, ffSize//2]*len(fft_symbols[0,:])
+        noise_r = (r_half/5)*symbol_length
         signal = np.sum(np.power(np.abs(fft_symbols),2), axis=1)
+        SNR = 10*np.log10(signal/noise_r -1)
         
 
         return hard_decision, [r0, r1, r_half], SNR
@@ -329,10 +331,10 @@ class Demodulation:
             cnt += 1
         
         if best_index != -1:
-            print(f"Best match found at index {best_index} with average vote score {best_score}")
+            # print(f"Best match found at index {best_index} with average vote score {best_score}")
             return best_index
         else:
-            print("Known sequence not found")
+            # print("Known sequence not found")
             return None
 
     def detect_message_indices(self,received, preamble, repeat, cooefficient=2):
@@ -409,16 +411,19 @@ class PostProcessing:
         return self.IQsamples[int(index[0]):int(index[1])]
     def frameByNumber(self,frame_nr:int):
         return self.frameByIndex(self.TotalFramesIndex[frame_nr])
+        
 
     def frameFinder(self, samples):
-        test_list = np.nonzero(samples)
+        test_list = np.nonzero(np.abs(samples)**2)
         framesIndex = []
         for k, g in groupby(enumerate(test_list[0]), lambda ix: ix[0]-ix[1]):
             temp = list(map(itemgetter(1), g))
             if len(temp)< self.conf.MIN_FRAME_SIZE:
+                print(temp[0],temp[-1], "diff:", temp[-1]-temp[0])
                 continue 
             framesIndex.append([temp[0],temp[-1]])
         return np.array(framesIndex)
+        
 
 
     def check(self): 

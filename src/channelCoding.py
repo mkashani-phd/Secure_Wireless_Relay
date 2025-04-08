@@ -76,8 +76,9 @@ def encode_LDPC(message:list|np.ndarray, Codeword_length:int):
     if filename is None:
         create_LDPC(K, N)
         filename = find_LDPC(ldpc_search)
-
-    print(filename)
+    
+    if filename is None:
+        raise Exception("No LDPC file found")
     filename_paresed = parse_filename(filename)
     zc = filename_paresed['zc']
     kb = filename_paresed['kb']

@@ -120,7 +120,7 @@ class CONFIG:
         # aviod the agc if the SNR calculation is needed
         config['LPF_CUTOFF'] = 3e5
 
-        config['LINIENT'] = 10
+        
         config['MIMO'] = False
         config['ACQ_TIME'] = 4
         config['IN_CHAMBER'] = False
@@ -143,6 +143,7 @@ class CONFIG:
 
         # detection and decoding parameters
         config['MIN_FRAME_SIZE'] = (len(self.PAYLOAD)/config['MSG_CODE_RATE']+2*len(PREAMBLE))* config['TX_SPS'] * config['RX_RATE']/config['TX_RATE']
+        config['LINIENT'] = 100
 
         config['WINDOW'] = int(config['TX_SPS'] * config['RX_RATE']/config['TX_RATE'])
         config['FREQ_DEVIATION_PRECENTAGE'] = 5/100 
@@ -151,7 +152,7 @@ class CONFIG:
 
         config['_minSize'] = 1e3
         config['_maxSize'] = 99.99e6
-        config['_minFrames'] = 2
+        config['_minFrames'] = 1
         config['_maxFrames'] = 40
 
         self.update_config(config, config_yaml_path=default_config_yaml_path)
