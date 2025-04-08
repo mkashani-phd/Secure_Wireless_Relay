@@ -123,7 +123,7 @@ class RX:
                     recv_buffer[0].tofile(f)  # Keep saving the buffer
                     linient_counter -= 1
                 else:
-                    np.zeros(batch_size).tofile(f)  # Save zeros if leniency is exhausted
+                    recv_buffer[0].tofile(f)  # Save zeros if leniency is exhausted
 
             
         duration = time.time() - start
