@@ -114,21 +114,25 @@ class RX:
         threshold = self.conf.THRESHOLD * Noise
 
 
-        linient_counter = 0  # Counter to track leniency
+        max_samples_in_state_3 = len(self.conf.PREAMBLE) * self.conf.TX_SPS * self.conf.RX_RATE / self.conf.TX_RATE 
+        max_samples_in_state_3 *= 1.1
         State = 0
         for i in range(nr_batches):
             streamer.recv(recv_buffer, metadata)
             temp = self.butter(recv_buffer[0])
-            bathc_power = np.max(np.abs(temp)**2)
+            bathc_power = np.mean(np.abs(temp)**2)
             fft = np.abs(np.fft.fft(temp))
             f1 = np.sum(fft[:int(len(fft)*self.conf.FREQ_DEVIATION_PRECENTAGE)])
             f0 = np.sum(fft[int(len(fft)*self.conf.FREQ_DEVIATION_PRECENTAGE):])
             
-            f_half = np.sum(fft[len(fft)//2-int(len(fft)*self.conf.FREQ_DEVIATION_PRECENTAGE):int(len(fft)/2)+int(len(fft)*self.conf.FREQ_DEVIATION_PRECENTAGE)])
+            f_half = np.sum(fft[len(fft)//2-int(len(fft)*self.conf.FREQ_DEVIATION_PRECENTAGE):len(fft)//2+int(len(fft)*self.conf.FREQ_DEVIATION_PRECENTAGE)])
             
-            if i%1000 == 0:
-                print(f"f0: {f0}, f1: {f1}, State: {State}")
+            # if i%10 == 0:
+            #     plt.plot(fft)
+            #     plt.title(f"f0: {f0}, f1: {f1}, f_half:{f_half} State: {State}")
 
+            #     plt.show()
+            state3_cnt = 0
             if State == 0: # Wait for the rising edge of the begining burst
                 # check if we received a burst
                 if  bathc_power> threshold and f0+f1 > f_half and f0 > f1:
@@ -140,6 +144,7 @@ class RX:
             elif State == 1: # Wait for the falling edge of the begining burst
                 # we are detecting the falling edge
                 if bathc_power < threshold:
+                    threshold = .75 * bathc_power
                     State = 2
                 recv_buffer[0].tofile(f)
             elif State == 2: # Wait for the rising edge of the ending burst
@@ -147,9 +152,18 @@ class RX:
                     State = 3
                 recv_buffer[0].tofile(f)
             elif State == 3: # Wait for the falling edge of the ending burst
+                state3_cnt += batch_size
                 if bathc_power < threshold:
                     # we have a signal, but it is below the threshold, so we stop recording
                     State = 0
+                    threshold = self.conf.THRESHOLD * Noise
+                    state3_cnt = 0
+                elif state3_cnt >= max_samples_in_state_3:
+                    # Increment the counter for the number of samples in State 3
+                    State = 0
+                    threshold = self.conf.THRESHOLD * Noise
+                    state3_cnt = 0
+
                 recv_buffer[0].tofile(f)
   
 
@@ -266,9 +280,13 @@ class Demodulation:
         for i in range(-2,3):
             r_half += fft_symbols[:, ffSize//2 + i]
 
-        noise_r = (r_half/5)*symbol_length
-        signal = np.sum(np.power(np.abs(fft_symbols),2), axis=1)
-        SNR = 10*np.log10(signal/noise_r -1)
+        r_noise = 0
+        for i in range(-5,5):
+            r_noise += fft_symbols[:, i]
+
+        
+        signal = r0 + r1
+        SNR = 10*np.log10(signal/r_noise -1)
         
 
         return hard_decision, [r0, r1, r_half], SNR
