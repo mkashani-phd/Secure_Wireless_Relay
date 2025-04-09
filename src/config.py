@@ -48,6 +48,7 @@ class CONFIG:
         self.MIMO = self.config['MIMO']
         self.CHANNEL = [0]
         self.LINIENT = self.config['LINIENT']
+        self.THRESHOLD = self.config['THRESHOLD']
 
 
 
@@ -144,6 +145,7 @@ class CONFIG:
         # detection and decoding parameters
         config['MIN_FRAME_SIZE'] = (len(self.PAYLOAD)/config['MSG_CODE_RATE']+2*len(PREAMBLE))* config['TX_SPS'] * config['RX_RATE']/config['TX_RATE']
         config['LINIENT'] = 100
+        config['THRESHOLD'] = 500 # 500 times of the noise power for the preamble power detection
 
         config['WINDOW'] = int(config['TX_SPS'] * config['RX_RATE']/config['TX_RATE'])
         config['FREQ_DEVIATION_PRECENTAGE'] = 5/100 

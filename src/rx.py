@@ -27,6 +27,8 @@ class RX:
             raise ValueError("Role must be either 'Destination' or 'Relay'")
             exit(1)
         self.Role = Role
+
+        self.filt = scipy.signal.butter(30, self.conf.LPF_CUTOFF, 'low', analog=False, output='sos',fs=self.conf.RX_RATE)
     
     #decunstruct the USRP object
     def __del__(self):
@@ -103,27 +105,53 @@ class RX:
             streamer.recv(recv_buffer, metadata)
 
         Noise = 0
-        cnt = 0
         for i in range(1000):
-            Noise += np.mean(np.abs(recv_buffer[0]))
-            cnt += 1
-        Noise /= cnt
+            streamer.recv(recv_buffer, metadata)
+            recv_buffer[0].tofile(f)
+            Noise += np.mean(np.abs(self.butter(recv_buffer[0]))**2)
+
+        Noise /= 1000
+        threshold = self.conf.THRESHOLD * Noise
 
 
         linient_counter = 0  # Counter to track leniency
+        State = 0
         for i in range(nr_batches):
             streamer.recv(recv_buffer, metadata)
-            power = np.mean(np.abs(recv_buffer[0]))
+            temp = self.butter(recv_buffer[0])
+            bathc_power = np.max(np.abs(temp)**2)
+            fft = np.abs(np.fft.fft(temp))
+            f1 = np.sum(fft[:int(len(fft)*self.conf.FREQ_DEVIATION_PRECENTAGE)])
+            f0 = np.sum(fft[int(len(fft)*self.conf.FREQ_DEVIATION_PRECENTAGE):])
             
-            if power > 1.1 * Noise:
-                recv_buffer[0].tofile(f)
-                linient_counter = self.conf.LINIENT  # Reset leniency counter
-            else:
-                if linient_counter > 0:
-                    recv_buffer[0].tofile(f)  # Keep saving the buffer
-                    linient_counter -= 1
+            f_half = np.sum(fft[len(fft)//2-int(len(fft)*self.conf.FREQ_DEVIATION_PRECENTAGE):int(len(fft)/2)+int(len(fft)*self.conf.FREQ_DEVIATION_PRECENTAGE)])
+            
+            if i%1000 == 0:
+                print(f"f0: {f0}, f1: {f1}, State: {State}")
+
+            if State == 0: # Wait for the rising edge of the begining burst
+                # check if we received a burst
+                if  bathc_power> threshold and f0+f1 > f_half and f0 > f1:
+                    State = 1
+                    recv_buffer[0].tofile(f)
                 else:
-                    recv_buffer[0].tofile(f)  # Save zeros if leniency is exhausted
+                    # we are still in the noise state, so we can insert some zeros
+                    np.full(1, np.nan + np.nan*1j, dtype=np.complex64).tofile(f)
+            elif State == 1: # Wait for the falling edge of the begining burst
+                # we are detecting the falling edge
+                if bathc_power < threshold:
+                    State = 2
+                recv_buffer[0].tofile(f)
+            elif State == 2: # Wait for the rising edge of the ending burst
+                if bathc_power > threshold and f0+f1 > f_half and f0 > f1:
+                    State = 3
+                recv_buffer[0].tofile(f)
+            elif State == 3: # Wait for the falling edge of the ending burst
+                if bathc_power < threshold:
+                    # we have a signal, but it is below the threshold, so we stop recording
+                    State = 0
+                recv_buffer[0].tofile(f)
+  
 
             
         duration = time.time() - start
@@ -134,8 +162,7 @@ class RX:
         return file
     
     def butter(self,input):
-        fltr = scipy.signal.butter(30, self.conf.LPF_CUTOFF, 'low', analog=False, output='sos',fs=self.conf.RX_RATE)
-        return scipy.signal.sosfilt(fltr, input) 
+        return scipy.signal.sosfilt(self.filt, input) 
 
     
 
@@ -389,6 +416,15 @@ class PostProcessing:
         self.demod = demod
 
         self.IQsamples = np.fromfile(file, np.complex64)
+        indx = self.frameFinder()
+        self.noiseFrameIndex = indx[0:1]
+        self.TotalFramesIndex= indx[1:]
+
+        Noise_power = np.mean(np.abs(self.IQsamples[self.noiseFrameIndex[0][0]:self.noiseFrameIndex[0][1]]))**2
+        self.conf.THRESHOLD = self.conf.THRESHOLD * Noise_power
+
+        # replace the NaN values with zeros
+        self.IQsamples = np.nan_to_num(self.IQsamples, copy=False)
         if plot:
             import matplotlib.pyplot as plt
             plt.figure(figsize=(20,10), dpi=80)
@@ -396,11 +432,17 @@ class PostProcessing:
             plt.yticks(fontsize=30)
             plt.xlabel('Samples', fontsize=30)
             plt.ylabel('|IQ|^2', fontsize=30)
-            plt.plot(np.abs(self.IQsamples)**2)
+            plt.plot(np.abs(self.demod.butter(self.IQsamples))**2)
             plt.title("destination signal t0", fontsize=30)
+            for i in range(len(self.TotalFramesIndex)):
+                plt.axvline(x=self.TotalFramesIndex[i][0], color='r', linestyle='--', linewidth=2)
+                plt.axvline(x=self.TotalFramesIndex[i][1], color='g', linestyle='--', linewidth=2)
+            
+            plt.hlines(xmin= 0, xmax= self.TotalFramesIndex[-1][1], y=self.conf.THRESHOLD, color='orange', linestyle='--', linewidth=2)
+            plt.legend(['start','end'],fontsize=30)
             plt.show()
 
-        self.TotalFramesIndex= self.frameFinder(self.IQsamples)
+
 
 
     def __len__(self):
@@ -413,13 +455,14 @@ class PostProcessing:
         return self.frameByIndex(self.TotalFramesIndex[frame_nr])
         
 
-    def frameFinder(self, samples):
-        test_list = np.nonzero(np.abs(samples)**2)
+    def frameFinder(self):
+        # samples = np.fromfile(self.file, np.float32)
+        test_list = np.where(~np.isnan(self.IQsamples))
         framesIndex = []
+        i = 0
         for k, g in groupby(enumerate(test_list[0]), lambda ix: ix[0]-ix[1]):
             temp = list(map(itemgetter(1), g))
             if len(temp)< self.conf.MIN_FRAME_SIZE:
-                print(temp[0],temp[-1], "diff:", temp[-1]-temp[0])
                 continue 
             framesIndex.append([temp[0],temp[-1]])
         return np.array(framesIndex)

@@ -194,28 +194,9 @@ class TestFSKDemodulation(unittest.TestCase):
                         print("Good MAC")
                     else:
                         print("MAC is not correct")
-                    print("SNR: ", list(SNR))
 
                     SNR = SNR[index[0]+10:index[1]-10]
-                # frame = pp.frameByNumber(0)
-
-                # hard_decision,rs, SNR = demod.decode(frame)
-                # index = demod.detect_message_indices(received=list(hard_decision), preamble=self.conf.PREAMBLE, repeat=self.conf.PREAMBLE_REPEAT)
-                # if index[0] is None or index[1] is None:
-                #     continue
-
-                # msg_hard_decision = hard_decision[index[0]:index[1]]
-                # print("SNR: ", list(SNR))
-
-                # SNR = SNR[index[0]+10:index[1]-10] # just the SNR of the message not the preamble par
-                # print("SNR: ", np.nanmean(SNR))
-                # print("Message: ", pp.bits_to_string(msg_hard_decision[0:-256]))
-                # print("recieved MAC: ", pp.binary_list_to_hex(msg_hard_decision[-256:]))
-                # expected_MAC = hmac.new(self.conf.MAC_KEY.encode('utf-8'), msg=pp.bits_to_string(msg_hard_decision[0:-256]).encode('utf-8'), digestmod='sha256').hexdigest()
-                # if pp.binary_list_to_hex(msg_hard_decision[-256:]) == expected_MAC:
-                #     print("MAC is correct")
-                # else:
-                #     print("MAC is not correct")
+                    print("SNR: ", np.nanmean(SNR))
             else:
                 raise Exception("Recording is not correct")
                 
