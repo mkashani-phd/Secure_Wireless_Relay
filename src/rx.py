@@ -296,10 +296,10 @@ class Demodulation:
 
 
 
-    def successive_cancellation(self, msg_decoded_bits,  rs , index):
+    def successive_cancellation(self, msg_decoded_bits,  rs):
         r0,r1,r_half = rs
         SC_llr = []
-        for i in range(index[0],index[1]):            
+        for i in range(0,1):            
             if msg_decoded_bits[i] == 0:                
 
                 if r1[i] > self.conf.ALPHA * r0[i]:
