@@ -109,18 +109,20 @@ class RX:
             streamer.recv(recv_buffer, metadata)
             recv_buffer[0].tofile(f)
             Noise += np.mean(np.abs(self.butter(recv_buffer[0]))**2)
-
         Noise /= 1000
         threshold = self.conf.THRESHOLD * Noise
 
 
         max_samples_in_state_3 = len(self.conf.PREAMBLE) * self.conf.TX_SPS * self.conf.RX_RATE / self.conf.TX_RATE 
         max_samples_in_state_3 *= 1.1
-        State = 0
+        State = 0            
+        newthreshold = None
         for i in range(nr_batches):
             streamer.recv(recv_buffer, metadata)
             temp = self.butter(recv_buffer[0])
+            bathc_max = np.max(np.abs(temp)**2)
             bathc_power = np.mean(np.abs(temp)**2)
+            batch_min = np.min(np.abs(temp)**2)
             fft = np.abs(np.fft.fft(temp))
             f1 = np.sum(fft[:int(len(fft)*self.conf.FREQ_DEVIATION_PRECENTAGE)])
             f0 = np.sum(fft[int(len(fft)*self.conf.FREQ_DEVIATION_PRECENTAGE):])
@@ -133,6 +135,7 @@ class RX:
 
             #     plt.show()
             state3_cnt = 0
+
             if State == 0: # Wait for the rising edge of the begining burst
                 # check if we received a burst
                 if  bathc_power> threshold and f0+f1 > f_half and f0 > f1:
@@ -143,25 +146,28 @@ class RX:
                     np.full(1, np.nan + np.nan*1j, dtype=np.complex64).tofile(f)
             elif State == 1: # Wait for the falling edge of the begining burst
                 # we are detecting the falling edge
+                if newthreshold is None:
+                    newthreshold = .5*bathc_power
                 if bathc_power < threshold:
-                    threshold = .75 * bathc_power
                     State = 2
                 recv_buffer[0].tofile(f)
             elif State == 2: # Wait for the rising edge of the ending burst
-                if bathc_power > threshold and f0+f1 > f_half and f0 > f1:
+                if bathc_power > newthreshold and f0+f1 > f_half and f0 > f1:
                     State = 3
                 recv_buffer[0].tofile(f)
             elif State == 3: # Wait for the falling edge of the ending burst
                 state3_cnt += batch_size
-                if bathc_power < threshold:
+                if bathc_power < newthreshold:
                     # we have a signal, but it is below the threshold, so we stop recording
                     State = 0
                     threshold = self.conf.THRESHOLD * Noise
+                    newthreshold = None
                     state3_cnt = 0
                 elif state3_cnt >= max_samples_in_state_3:
                     # Increment the counter for the number of samples in State 3
                     State = 0
                     threshold = self.conf.THRESHOLD * Noise
+                    newthreshold = None
                     state3_cnt = 0
 
                 recv_buffer[0].tofile(f)
@@ -184,10 +190,11 @@ class RX:
 class Demodulation:
     def __init__(self, conf:config.CONFIG = config.CONFIG()):
         self.conf = conf
+        self.fltr = scipy.signal.butter(30, self.conf.LPF_CUTOFF, 'low', analog=False, output='sos',fs=self.conf.RX_RATE)
+
         
     def butter(self,input):
-        fltr = scipy.signal.butter(30, self.conf.LPF_CUTOFF, 'low', analog=False, output='sos',fs=self.conf.RX_RATE)
-        return scipy.signal.sosfilt(fltr, input) 
+        return scipy.signal.sosfilt(self.fltr, input) 
 
     def fft_max_peak(self, frame,window):
         fft = np.fft.fftshift(np.fft.fft(frame[:window]))
@@ -254,39 +261,57 @@ class Demodulation:
 
         n_symbols = (len(signal) - offset) // symbol_length
         symbols = signal[offset:n_symbols * symbol_length + offset]
-
+# frame = self.butter(frame)
         # Compute hard decision
         hard_decision = []
         for i in range(0, len(symbols), symbol_length):
-            peak, fft_peak = self.fft_max_peak(symbols[i:i + symbol_length], symbol_length)
+            peak, fft_peak = self.fft_max_peak(self.butter(symbols[i:i + symbol_length]), symbol_length)
             hard_decision.append(self.decision(peak=peak, threshold=symbol_length // 2))
 
         # Compute FFT and power spectrum
         fft_symbols = np.fft.fft(symbols.reshape(n_symbols, symbol_length), axis=1)
+        #plot the ffts stacks as a 2D image
+        plt.imshow(np.abs(fft_symbols), aspect='auto', cmap='hot')
+        plt.colorbar()
+        plt.title("FFT Stacks")
+        plt.xlabel("FFT Bins")
+        plt.ylabel("Symbols")
+        plt.show()
+
+        # lpf the fft and plot again
+        symbols2 = [self.butter(symbol) for symbol in symbols.reshape(n_symbols, symbol_length)] 
+        fft_symbols2 = np.fft.fft(symbols2)
+        plt.imshow(np.abs(fft_symbols2), aspect='auto', cmap='hot')
+        plt.colorbar()
+        plt.title("FFT Stacks after LPF")
+        plt.xlabel("FFT Bins")
+        plt.ylabel("Symbols")
+        plt.show()
+
 
 
         # For legacy return values
         fft_symbols = np.array(np.power(np.abs(np.fft.fft(symbols.reshape(n_symbols, symbol_length), axis=1)),2), dtype=np.float32)
         r0 = 0
-        for i in range(-2,3):
+        for i in range(-3,4):
             r0 += fft_symbols[:, tone_bins[1] + i] 
 
         r1 = 0
-        for i in range(-2,3):
+        for i in range(-3,4):
             r1 += fft_symbols[:, tone_bins[0] + i]
         
         ffSize = fft_symbols.shape[1]
         r_half = 0
-        for i in range(-2,3):
+        for i in range(-3,4):
             r_half += fft_symbols[:, ffSize//2 + i]
 
         r_noise = 0
-        for i in range(-5,5):
+        for i in range(-7,7):
             r_noise += fft_symbols[:, i]
+        # r_noise *= 3
 
-        
-        signal = r0 + r1
-        SNR = 10*np.log10(signal/r_noise -1)
+        r_signal = r0 + r1
+        SNR = 10*np.log10(r_signal/r_noise -1)
         
 
         return hard_decision, [r0, r1, r_half], SNR
@@ -329,8 +354,7 @@ class Demodulation:
     def decode(self, frame):
     # compute sliding fft of the signal every 40 samples where the peak is 1 and the rest 0
         # lpf
-        frame = self.butter(frame)
-        return self.compute_hard_desicion_and_rs(frame, self.conf.WINDOW, [10,190])
+        return self.compute_hard_desicion_and_rs(frame, self.conf.WINDOW, [9,190])
         
 
     

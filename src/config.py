@@ -108,15 +108,15 @@ class CONFIG:
         config['FREQ'] = 1.9e9
 
         config['TX_RATE'] = 1e6
-        config['TX_GAIN'] = 50 # max gain 89.8
-        config['TX_RELAY_GAIN'] = 50 # max gain 31.5
+        config['TX_GAIN'] = 60 # max gain 89.8
+        config['TX_RELAY_GAIN'] = 60 
         config['TX_SPS'] = 40
 
-        config['TX_PAYLOAD_POWER_SCALE'] = 1/4
+        config['TX_PAYLOAD_POWER_SCALE'] = 0.01
         config['ALPHA'] = 0.2
 
         config['RX_RATE'] = 5e6
-        config['RX_GAIN'] = 20.0 # Automatic Gain Control "agc" max gain 76
+        config['RX_GAIN'] = 10.0 # Automatic Gain Control "agc" max gain 76
         config['RX_RELAY_GAIN'] = 60.0 # max gain 31.5
         # aviod the agc if the SNR calculation is needed
         config['LPF_CUTOFF'] = 3e5
@@ -145,10 +145,10 @@ class CONFIG:
         # detection and decoding parameters
         config['MIN_FRAME_SIZE'] = (len(self.PAYLOAD)/config['MSG_CODE_RATE']+2*len(PREAMBLE))* config['TX_SPS'] * config['RX_RATE']/config['TX_RATE']
         config['LINIENT'] = 100
-        config['THRESHOLD'] = 500 # 500 times of the noise power for the preamble power detection
+        config['THRESHOLD'] = 10 # 500 times of the noise power for the preamble power detection
 
         config['WINDOW'] = int(config['TX_SPS'] * config['RX_RATE']/config['TX_RATE'])
-        config['FREQ_DEVIATION_PRECENTAGE'] = 5/100 
+        config['FREQ_DEVIATION_PRECENTAGE'] = 10/100 
 
 
 
