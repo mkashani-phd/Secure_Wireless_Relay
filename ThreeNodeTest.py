@@ -34,6 +34,7 @@ class PhaseOneThreeNodeTestSC(unittest.TestCase):
         self.rx_dest = src.RX(Role = "Destination")
         self.rx_relay = src.RX(Role = "Relay")
         self.pp = src.PostProcessing
+        self.demod = src.Demodulation()
     
     def TestPhaseOne(self):#Branden
         def TxSource():
@@ -46,6 +47,46 @@ class PhaseOneThreeNodeTestSC(unittest.TestCase):
             pp_relay = self.pp(file_relay, self.rx_relay.conf)
             if(pp_relay.check()):
                 print("Recording at relay is correct")
+                for i in range(len(pp_relay.TotalFramesIndex)):
+                    frame = pp_relay.frameByNumber(i)
+                    hard_decision,rs, SNR = self.demod.decode(frame)
+                    index = self.demod.detect_message_indices(received=list(hard_decision), preamble=self.conf.PREAMBLE, repeat=self.conf.PREAMBLE_REPEAT)
+                    if index[0] is None or index[1] is None:
+                        print("No preamble detected!")
+                        continue
+
+                    msg_hard_decision = hard_decision[index[0]:index[1]]
+                    print("Message: ", pp_relay.bits_to_string(msg_hard_decision[0]))
+
+                    ## add the message decoding using LDPC
+                    
+                    SNR = SNR[index[0]+10:index[1]-10]
+                    print("SNR: ", np.nanmean(SNR))
+
+                    # pull rs values of the signal from phase 1 from the database
+                    rs_recovered = None
+                    tag_llrs = self.demod.successive_cancellation(msg_hard_decision, rs_recovered)
+
+                    Recovered_direct_tag = src.channelCoding.decode_LDPC(tag_llrs, 256)
+                    expected_tag = hmac.new(self.conf.MAC_KEY.encode('utf-8'), msg=pp_relay.bits_to_string(msg_hard_decision).tobytes(), digestmod='sha256').hexdigest()
+
+                    if self.pp.binary_list_to_hex(Recovered_direct_tag) == expected_tag:
+                        print("MAC is correct")
+                    else:
+                        print("MAC is incorrect")
+                    print("Recovered MAC: ", self.pp.binary_list_to_hex(Recovered_direct_tag))
+                    print("Expected MAC: ", expected_tag)
+
+        try:
+            tx_thread = threading.Thread(target=TxSource)
+            rx_thread = threading.Thread(target=RxRelay)
+            rx_thread.start()
+            time.sleep(1.7)  # wait for the transmission to start
+            tx_thread.start()
+            tx_thread.join()
+            rx_thread.join()
+        except Exception as e:
+            self.fail(f"Failed to record waveform: {e}")
         def RxDest():
             file_dest = self.rx_dest.record()
             pp_dest = self.pp(file_dest, self.rx_dest.conf)
@@ -163,6 +204,7 @@ class PhaseOneThreeNodeTestOrig(unittest.TestCase):
         self.rx_dest = src.RX(Role = "Destination")
         self.rx_relay = src.RX(Role = "Relay")
         self.pp = src.PostProcessing
+        self.demod = src.rx.Demodulation
     
     def TestPhaseOne(self):#Branden
         def TxSource():
@@ -175,8 +217,44 @@ class PhaseOneThreeNodeTestOrig(unittest.TestCase):
             pp_relay = self.pp(file_relay, self.rx_relay.conf)
             if(pp_relay.check()):
                 print("Recording at relay is correct")
+                for i in range(len(pp_relay.TotalFramesIndex)):
+                    frame = pp_relay.frameByNumber(i)
+                    hard_decision,rs, SNR = self.demod.decode(frame)
+                    index = self.demod.detect_message_indices(received=list(hard_decision), preamble=self.conf.PREAMBLE, repeat=self.conf.PREAMBLE_REPEAT)
+                    if index[0] is None or index[1] is None:
+                        print("No preamble detected!")
+                        continue
 
-            #decode lines
+                    msg_hard_decision = hard_decision[index[0]:index[1]][0:-256]
+                    MAC_hard_decision = hard_decision[index[0]:index[1]][-256:]
+                    print("Message: ", pp_relay.bits_to_string(msg_hard_decision[0]))
+                    print("MAC: ", pp_relay.binary_list_to_hex(MAC_hard_decision[0]))
+
+                    SNR = SNR[index[0]+10:index[1]-10]
+                    print("SNR: ", np.nanmean(SNR))
+
+
+
+                    expected_tag = hmac.new(self.conf.MAC_KEY.encode('utf-8'), msg=pp_relay.bits_to_string(msg_hard_decision).tobytes(), digestmod='sha256').hexdigest()
+
+                    if self.pp.binary_list_to_hex(MAC_hard_decision) == expected_tag:
+                        print("MAC is correct")
+                    else:
+                        print("MAC is incorrect")
+                    ## add the message and MAC decoding using LDPC
+
+        try:
+            tx_thread = threading.Thread(target=TxSource)
+            rx_thread = threading.Thread(target=RxRelay)
+            rx_thread.start()
+            time.sleep(1.7)  # wait for the transmission to start
+            tx_thread.start()
+            tx_thread.join()
+            rx_thread.join()
+        except Exception as e:
+            self.fail(f"Failed to record waveform: {e}")
+
+            
 
         def RxDest():
             file_dest = self.rx_dest.record()
