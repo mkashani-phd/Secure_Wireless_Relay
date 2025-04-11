@@ -19,14 +19,21 @@ from . import channelCoding as cc
 class RX:
     def __init__(self, conf:config.CONFIG = config.CONFIG(), usrp:uhd.usrp.MultiUSRP = None, Role:str = "Destination"):
         self.conf = conf
-        if usrp is None:
-            self.usrp = uhd.usrp.MultiUSRP(f"serial={conf.DESTINATION}")
-        else:
-            self.usrp = usrp
+
         if Role not in ["Destination", "Relay"]:
             raise ValueError("Role must be either 'Destination' or 'Relay'")
             exit(1)
         self.Role = Role
+
+        if usrp is None:
+            if self.Role == "Destination":
+                self.usrp = uhd.usrp.MultiUSRP(f"serial={conf.DESTINATION}")
+                self.threstold = conf.THRESHOLD_DEST
+            elif self.Role == "Relay":
+                self.usrp = uhd.usrp.MultiUSRP(f"serial={conf.RELAY}")
+                self.threstold = conf.THRESHOLD_RELAY
+        else:
+            self.usrp = usrp
 
         self.filt = scipy.signal.butter(30, self.conf.LPF_CUTOFF, 'low', analog=False, output='sos',fs=self.conf.RX_RATE)
     
@@ -98,79 +105,12 @@ class RX:
         file = os.path.join(os.path.dirname(__file__),"__recording_cache__", f"{self.Role}_"+str(np.round(self.usrp.get_rx_freq(),2))+"_"+str(np.round(self.usrp.get_rx_rate(),2))+"_"+str(self.conf.RX_GAIN)+"_"+str(self.conf.ACQ_TIME) + "_"+ str(self.conf.IN_CHAMBER)+"_.iq")
         f = open(file, "wb")
         start = time.time()
-        cnt = 4
-        
-        # Record 100 samples and calculate the average power as normal power
+    
         for i in range(100):
             streamer.recv(recv_buffer, metadata)
-
-        Noise = 0
-        for i in range(1000):
-            streamer.recv(recv_buffer, metadata)
-            recv_buffer[0].tofile(f)
-            Noise += np.mean(np.abs(self.butter(recv_buffer[0]))**2)
-        Noise /= 1000
-        threshold = self.conf.THRESHOLD * Noise
-
-
-        max_samples_in_state_3 = len(self.conf.PREAMBLE) * self.conf.TX_SPS * self.conf.RX_RATE / self.conf.TX_RATE 
-        max_samples_in_state_3 *= 1.1
-        State = 0            
-        newthreshold = None
         for i in range(nr_batches):
             streamer.recv(recv_buffer, metadata)
-            temp = self.butter(recv_buffer[0])
-            bathc_max = np.max(np.abs(temp)**2)
-            bathc_power = np.mean(np.abs(temp)**2)
-            batch_min = np.min(np.abs(temp)**2)
-            fft = np.abs(np.fft.fft(temp))
-            f1 = np.sum(fft[:int(len(fft)*self.conf.FREQ_DEVIATION_PRECENTAGE)])
-            f0 = np.sum(fft[int(len(fft)*self.conf.FREQ_DEVIATION_PRECENTAGE):])
-            
-            f_half = np.sum(fft[len(fft)//2-int(len(fft)*self.conf.FREQ_DEVIATION_PRECENTAGE):len(fft)//2+int(len(fft)*self.conf.FREQ_DEVIATION_PRECENTAGE)])
-            
-            # if i%10 == 0:
-            #     plt.plot(fft)
-            #     plt.title(f"f0: {f0}, f1: {f1}, f_half:{f_half} State: {State}")
-
-            #     plt.show()
-            state3_cnt = 0
-
-            if State == 0: # Wait for the rising edge of the begining burst
-                # check if we received a burst
-                if  bathc_power> threshold and f0+f1 > f_half and f0 > f1:
-                    State = 1
-                    recv_buffer[0].tofile(f)
-                else:
-                    # we are still in the noise state, so we can insert some zeros
-                    np.full(1, np.nan + np.nan*1j, dtype=np.complex64).tofile(f)
-            elif State == 1: # Wait for the falling edge of the begining burst
-                # we are detecting the falling edge
-                if newthreshold is None:
-                    newthreshold = .5*bathc_power
-                if bathc_power < threshold:
-                    State = 2
-                recv_buffer[0].tofile(f)
-            elif State == 2: # Wait for the rising edge of the ending burst
-                if bathc_power > newthreshold and f0+f1 > f_half and f0 > f1:
-                    State = 3
-                recv_buffer[0].tofile(f)
-            elif State == 3: # Wait for the falling edge of the ending burst
-                state3_cnt += batch_size
-                if bathc_power < newthreshold:
-                    # we have a signal, but it is below the threshold, so we stop recording
-                    State = 0
-                    threshold = self.conf.THRESHOLD * Noise
-                    newthreshold = None
-                    state3_cnt = 0
-                elif state3_cnt >= max_samples_in_state_3:
-                    # Increment the counter for the number of samples in State 3
-                    State = 0
-                    threshold = self.conf.THRESHOLD * Noise
-                    newthreshold = None
-                    state3_cnt = 0
-
-                recv_buffer[0].tofile(f)
+            recv_buffer[0].tofile(f)
   
 
             
@@ -268,25 +208,25 @@ class Demodulation:
             peak, fft_peak = self.fft_max_peak(self.butter(symbols[i:i + symbol_length]), symbol_length)
             hard_decision.append(self.decision(peak=peak, threshold=symbol_length // 2))
 
-        # Compute FFT and power spectrum
-        fft_symbols = np.fft.fft(symbols.reshape(n_symbols, symbol_length), axis=1)
-        #plot the ffts stacks as a 2D image
-        plt.imshow(np.abs(fft_symbols), aspect='auto', cmap='hot')
-        plt.colorbar()
-        plt.title("FFT Stacks")
-        plt.xlabel("FFT Bins")
-        plt.ylabel("Symbols")
-        plt.show()
+        # # Compute FFT and power spectrum
+        # fft_symbols = np.fft.fft(symbols.reshape(n_symbols, symbol_length), axis=1)
+        # #plot the ffts stacks as a 2D image
+        # plt.imshow(np.abs(fft_symbols), aspect='auto', cmap='hot')
+        # plt.colorbar()
+        # plt.title("FFT Stacks")
+        # plt.xlabel("FFT Bins")
+        # plt.ylabel("Symbols")
+        # plt.show()
 
-        # lpf the fft and plot again
-        symbols2 = [self.butter(symbol) for symbol in symbols.reshape(n_symbols, symbol_length)] 
-        fft_symbols2 = np.fft.fft(symbols2)
-        plt.imshow(np.abs(fft_symbols2), aspect='auto', cmap='hot')
-        plt.colorbar()
-        plt.title("FFT Stacks after LPF")
-        plt.xlabel("FFT Bins")
-        plt.ylabel("Symbols")
-        plt.show()
+        # # lpf the fft and plot again
+        # symbols2 = [self.butter(symbol) for symbol in symbols.reshape(n_symbols, symbol_length)] 
+        # fft_symbols2 = np.fft.fft(symbols2)
+        # plt.imshow(np.abs(fft_symbols2), aspect='auto', cmap='hot')
+        # plt.colorbar()
+        # plt.title("FFT Stacks after LPF")
+        # plt.xlabel("FFT Bins")
+        # plt.ylabel("Symbols")
+        # plt.show()
 
 
 
@@ -452,69 +392,118 @@ class Demodulation:
 
 
 class PostProcessing:
-    def __init__(self,  file:str, conf:config.CONFIG = config.CONFIG(), demod:Demodulation = Demodulation(), plot:bool = False):
+    def __init__(self,  file:str, conf:config.CONFIG = config.CONFIG(), demod:Demodulation = Demodulation(), plot:bool = False, Role:str = "Destination"):
+        if Role not in ["Destination", "Relay"]:
+            raise ValueError("Role must be either 'Destination' or 'Relay'")
+            exit(1)
+        self.Role = Role
+        if Role == "Destination":
+            self.threshold = conf.THRESHOLD_DEST
+        elif Role == "Relay":
+            self.threshold = conf.THRESHOLD_RELAY
         self.file = file
         self.conf = conf
         self.demod = demod
+        self.plot = plot
 
         self.IQsamples = np.fromfile(file, np.complex64)
-        indx = self.frameFinder()
-        self.noiseFrameIndex = indx[0:1]
-        self.TotalFramesIndex= indx[1:]
+        self.Frames = self.frameFinder()
 
-        Noise_power = np.mean(np.abs(self.IQsamples[self.noiseFrameIndex[0][0]:self.noiseFrameIndex[0][1]]))**2
-        self.conf.THRESHOLD = self.conf.THRESHOLD * Noise_power
 
-        # replace the NaN values with zeros
-        self.IQsamples = np.nan_to_num(self.IQsamples, copy=False)
-        if plot:
+        self.fltr = scipy.signal.butter(30, self.conf.LPF_CUTOFF, 'low', analog=False, output='sos',fs=self.conf.RX_RATE)
+        
+
+
+
+
+       
+
+    def __len__(self):
+        return len(self.Frames)
+
+    def butter(self,input):
+        return scipy.signal.sosfilt(self.fltr, input) 
+    
+    def frameByNumber(self,frame_nr:int):
+        return self.Frames[frame_nr]
+        
+
+    def frameFinder(self):
+        batch_size = self.conf.WINDOW
+        recording = self.IQsamples.copy()
+        if self.IQsamples.size % batch_size != 0:
+            recording = np.concatenate((recording, np.zeros(batch_size - self.IQsamples.size % batch_size)))
+        recording_batches = recording.reshape(-1, batch_size)
+        
+
+        res = []
+        State = 0
+        threshold = self.threshold
+
+        for i in range(recording_batches.shape[0]):
+            # process the batch
+            batch = recording_batches[i].copy()
+            bathc_power = np.max(np.abs(batch)**2)
+
+
+
+            if State == 0: # Wait for the rising edge of the begining burst
+                # check if we received a burst
+                if  bathc_power> threshold:
+                    State = 1
+                    res.extend(batch)
+                else:
+                    # we are still in the noise state, so we can insert some zeros
+                    res.extend([np.nan + 1j*np.nan])
+            elif State == 1: # Wait for the falling edge of the begining burst
+                # we are detecting the falling edge
+                if bathc_power < threshold:
+                    State = 2
+                res.extend(batch)
+
+            elif State == 2: # Wait for the rising edge of the ending burst
+                if bathc_power > threshold:
+                    State = 3
+                res.extend(batch)
+            elif State == 3: # Wait for the falling edge of the ending burst
+                if bathc_power < threshold:
+                    # we have a signal, but it is below the threshold, so we stop recording
+                    State = 0
+                res.extend(batch)
+
+        temp = np.nan_to_num(res, copy=True)
+        if self.plot:
             import matplotlib.pyplot as plt
             plt.figure(figsize=(20,10), dpi=80)
             plt.xticks(fontsize=30)
             plt.yticks(fontsize=30)
             plt.xlabel('Samples', fontsize=30)
             plt.ylabel('|IQ|^2', fontsize=30)
-            plt.plot(np.abs(self.demod.butter(self.IQsamples))**2)
-            plt.title("destination signal t0", fontsize=30)
-            for i in range(len(self.TotalFramesIndex)):
-                plt.axvline(x=self.TotalFramesIndex[i][0], color='r', linestyle='--', linewidth=2)
-                plt.axvline(x=self.TotalFramesIndex[i][1], color='g', linestyle='--', linewidth=2)
-            
-            plt.hlines(xmin= 0, xmax= self.TotalFramesIndex[-1][1], y=self.conf.THRESHOLD, color='orange', linestyle='--', linewidth=2)
-            plt.legend(['start','end'],fontsize=30)
+            plt.hlines(self.threshold, 0, len(temp), colors='r', linestyles='dashed', label='Threshold')
+            plt.plot(np.abs(self.demod.butter(temp))**2)
+            plt.title(f"{self.Role} signal", fontsize=30)
             plt.show()
 
 
 
-
-    def __len__(self):
-        return len(self.TotalFramesIndex)
-
-
-    def frameByIndex(self,index):
-        return self.IQsamples[int(index[0]):int(index[1])]
-    def frameByNumber(self,frame_nr:int):
-        return self.frameByIndex(self.TotalFramesIndex[frame_nr])
-        
-
-    def frameFinder(self):
-        # samples = np.fromfile(self.file, np.float32)
-        test_list = np.where(~np.isnan(self.IQsamples))
-        framesIndex = []
-        i = 0
+        frames = {} 
+        cnt = 0
+        test_list = np.where(~np.isnan(res))
         for k, g in groupby(enumerate(test_list[0]), lambda ix: ix[0]-ix[1]):
             temp = list(map(itemgetter(1), g))
             if len(temp)< self.conf.MIN_FRAME_SIZE:
                 continue 
-            framesIndex.append([temp[0],temp[-1]])
-        return np.array(framesIndex)
+            frames[cnt] = np.array(res[temp[0]:  temp[-1]])
+            cnt += 1
+
+        return frames   
         
 
 
     def check(self): 
         #check minimum number of the frames
         ok = True
-        nr_frame = len(self.TotalFramesIndex)
+        nr_frame = len(self.Frames)
         print("\nnumber of frames: " + str(nr_frame))
         if  nr_frame < self.conf._minFrames or  nr_frame > self.conf._maxFrames:
             print("# Frame check failed ...")

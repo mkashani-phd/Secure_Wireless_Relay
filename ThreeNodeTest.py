@@ -36,7 +36,7 @@ class PhaseOneThreeNodeTestSC(unittest.TestCase):
         self.pp = src.PostProcessing
         self.demod = src.Demodulation()
     
-    def TestPhaseOne(self):#Branden
+    def test_phase_one(self):#Branden
         def TxSource():
             try:
                 self.tx.send_waveform(self.fsk_signal_SC)
@@ -87,6 +87,7 @@ class PhaseOneThreeNodeTestSC(unittest.TestCase):
             rx_thread.join()
         except Exception as e:
             self.fail(f"Failed to record waveform: {e}")
+        
         def RxDest():
             file_dest = self.rx_dest.record()
             pp_dest = self.pp(file_dest, self.rx_dest.conf)
@@ -108,7 +109,7 @@ class PhaseTwoThreeNodeTestSC(unittest.TestCase):
         self.MAC_bits = np.array(self.tx_relay.hex_to_binary_list(self.MAC))
 
     
-    def TestPhaseTwo(self):
+    def test_phase_two(self):
         def TxRelay():
             # must get the message from the RX_relay in phase 1
             fsk_signal = self.tx_relay.fsk_modulate(self.payload_bits, # sends with half the power,
@@ -183,7 +184,7 @@ class PhaseOneThreeNodeTestOrig(unittest.TestCase):
         self.payload_bits = np.array(self.tx.string_to_bits(self.conf.PAYLOAD))
         self.MAC = hmac.new(self.conf.MAC_KEY.encode('utf-8'), msg=self.conf.PAYLOAD.encode('utf-8'), digestmod='sha256').hexdigest()
         self.MAC_bits = np.array(self.tx.hex_to_binary_list(self.MAC))
-        self.payload_bits = self.payload_bits[:self.MAC_bits.shape[0]]
+        # self.payload_bits = self.payload_bits[:self.MAC_bits.shape[0]]
         self.tx_bits = np.concatenate(
                                     [ 
                                     
@@ -203,18 +204,16 @@ class PhaseOneThreeNodeTestOrig(unittest.TestCase):
         
         self.rx_dest = src.RX(Role = "Destination")
         self.rx_relay = src.RX(Role = "Relay")
+        self.demod = src.rx.Demodulation()
         self.pp = src.PostProcessing
-        self.demod = src.rx.Demodulation
     
-    def TestPhaseOne(self):#Branden
+    def test_phase_one(self):#Branden
         def TxSource():
-            try:
-                self.tx.send_waveform(self.fsk_signal)
-            except Exception as e:
-                self.fail(f"Failed to send waveform: {e}")
+            self.tx.send_waveform(self.fsk_signal)
+
         def RxRelay():
             file_relay = self.rx_relay.record()
-            pp_relay = self.pp(file_relay, self.rx_relay.conf)
+            pp_relay = self.pp(file_relay, self.rx_relay.conf, plot = True, Role = "Relay")
             if(pp_relay.check()):
                 print("Recording at relay is correct")
                 for i in range(len(pp_relay.TotalFramesIndex)):
@@ -243,24 +242,31 @@ class PhaseOneThreeNodeTestOrig(unittest.TestCase):
                         print("MAC is incorrect")
                     ## add the message and MAC decoding using LDPC
 
+        def RxDest():
+            file_dest = self.rx_dest.record()
+            pp_dest = self.pp(file_dest, self.rx_dest.conf, plot = True, Role = "Destination")
+            if(pp_dest.check()):
+                print("Recording at destination is correct")
+
         try:
-            tx_thread = threading.Thread(target=TxSource)
-            rx_thread = threading.Thread(target=RxRelay)
-            rx_thread.start()
-            time.sleep(1.7)  # wait for the transmission to start
-            tx_thread.start()
-            tx_thread.join()
-            rx_thread.join()
+            tx_source_thread = threading.Thread(target=TxSource)
+            rx_relay_thread = threading.Thread(target=RxRelay)
+            rx_dest_thread = threading.Thread(target=RxDest)
+
+            rx_dest_thread.start()
+            time.sleep(1)  # wait for the transmission to start
+            rx_relay_thread.start()
+            time.sleep(1)  # wait for the transmission to start
+            tx_source_thread.start()
+            tx_source_thread.join()
+            rx_relay_thread.join()
+            rx_dest_thread.join()
         except Exception as e:
             self.fail(f"Failed to record waveform: {e}")
 
             
 
-        def RxDest():
-            file_dest = self.rx_dest.record()
-            pp_dest = self.pp(file_dest, self.rx_dest.conf)
-            if(pp_dest.check()):
-                print("Recording at destination is correct")
+
 
 
 class PhaseTwoThreeNodeTestOrig(unittest.TestCase):
@@ -277,7 +283,7 @@ class PhaseTwoThreeNodeTestOrig(unittest.TestCase):
         
 
     
-    def TestPhaseTwo(self):
+    def test_phase_two(self):
         def TxRelay():
             # must get the message from the RX_relay in phase 1
             fsk_signal = self.tx_relay.fsk_modulate(np.concatenate([self.payload_bits, self.MAC_bits]), # sends with half the power,
@@ -332,3 +338,9 @@ class PhaseTwoThreeNodeTestOrig(unittest.TestCase):
         except Exception as e:
             self.fail(f"Failed to record waveform: {e}")
             
+
+
+
+if __name__ == '__main__':
+    unittest.main(verbosity=2)
+

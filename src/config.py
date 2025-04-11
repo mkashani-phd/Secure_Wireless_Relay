@@ -48,8 +48,8 @@ class CONFIG:
         self.MIMO = self.config['MIMO']
         self.CHANNEL = [0]
         self.LINIENT = self.config['LINIENT']
-        self.THRESHOLD = self.config['THRESHOLD']
-
+        self.THRESHOLD_DEST = self.config['THRESHOLD_Dest']
+        self.THRESHOLD_RELAY = self.config['THRESHOLD_Relay']
 
 
         self.IN_CHAMBER = self.config['IN_CHAMBER']
@@ -101,8 +101,9 @@ class CONFIG:
         config = {}
 
         config['SOURCE'] = "8000169"
-        config['DESTINATION'] = "E3R10Z5NW"
         config['RELAY'] = "8000182"
+        # config['DESTINATION'] = "8000122"
+        config['DESTINATION'] = "E3R10Z5NW"
 
         config['MAC_KEY'] = "key"
         config['FREQ'] = 1.9e9
@@ -116,14 +117,14 @@ class CONFIG:
         config['ALPHA'] = 0.2
 
         config['RX_RATE'] = 5e6
-        config['RX_GAIN'] = 10.0 # Automatic Gain Control "agc" max gain 76
-        config['RX_RELAY_GAIN'] = 60.0 # max gain 31.5
+        config['RX_GAIN'] = 50.0 # Automatic Gain Control "agc" max gain 76
+        config['RX_RELAY_GAIN'] = 50.0 # max gain 31.5
         # aviod the agc if the SNR calculation is needed
         config['LPF_CUTOFF'] = 3e5
 
         
         config['MIMO'] = False
-        config['ACQ_TIME'] = 4
+        config['ACQ_TIME'] = 10
         config['IN_CHAMBER'] = False
 
 
@@ -145,7 +146,8 @@ class CONFIG:
         # detection and decoding parameters
         config['MIN_FRAME_SIZE'] = (len(self.PAYLOAD)/config['MSG_CODE_RATE']+2*len(PREAMBLE))* config['TX_SPS'] * config['RX_RATE']/config['TX_RATE']
         config['LINIENT'] = 100
-        config['THRESHOLD'] = 10 # 500 times of the noise power for the preamble power detection
+        config['THRESHOLD_Dest'] = 0.01
+        config['THRESHOLD_Relay'] = 0.01
 
         config['WINDOW'] = int(config['TX_SPS'] * config['RX_RATE']/config['TX_RATE'])
         config['FREQ_DEVIATION_PRECENTAGE'] = 10/100 
