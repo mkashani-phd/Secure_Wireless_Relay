@@ -35,7 +35,7 @@ class CONFIG:
         except FileNotFoundError:
             print("MQTT.json file not found. Please use the rename the MQTT-template.json to MQTT.json")
             print("Using MQTT is not necessary for the tests and other synchronization can be used!")
-
+            self.MQTT = None
          
 
         self.SOURCE = self.config['SOURCE']
