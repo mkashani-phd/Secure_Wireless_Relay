@@ -1,7 +1,9 @@
 import yaml
 import numpy as np
-import hmac
-import time
+import json
+import os
+
+
 
 
 class CONFIG:
@@ -24,6 +26,17 @@ class CONFIG:
                 self.config = yaml.safe_load(stream)
             except yaml.YAMLError as exc:
                 print(exc)
+
+        # Read the __cache__/AIO_KEY.json file relative to this file
+        cache_file_path = os.path.join(os.path.dirname(__file__), "MQTT.json")
+        try:
+            with open(cache_file_path, "r") as file:
+                self.MQTT = json.load(file)
+        except FileNotFoundError:
+            print("MQTT.json file not found. Please use the rename the MQTT-template.json to MQTT.json")
+            print("Using MQTT is not necessary for the tests and other synchronization can be used!")
+
+         
 
         self.SOURCE = self.config['SOURCE']
         self.DESTINATION = self.config['DESTINATION']
@@ -142,7 +155,6 @@ class CONFIG:
         config['SUPERPOSED'] = False
 
 
-
         # detection and decoding parameters
         config['MIN_FRAME_SIZE'] = (len(self.PAYLOAD)/config['MSG_CODE_RATE']+2*len(PREAMBLE))* config['TX_SPS'] * config['RX_RATE']/config['TX_RATE']
         config['LINIENT'] = 100
@@ -160,17 +172,6 @@ class CONFIG:
         config['_maxFrames'] = 40
 
         self.update_config(config, config_yaml_path=default_config_yaml_path)
-
-
-
-
-
-
-
-
-
-
-
 
 
 def test():
