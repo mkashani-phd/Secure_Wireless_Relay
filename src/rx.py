@@ -50,7 +50,7 @@ class RX:
                 else:
                     self.usrp.set_rx_agc(True, 0)
                     print("AGC is enabled")
-            elif self.role == "Relay":
+            elif self.role == "relay":
                 if self.conf.RX_RELAY_GAIN != "agc":
                     self.usrp.set_rx_gain(self.conf.RX_RELAY_GAIN, chnl)
                 else:
@@ -234,13 +234,14 @@ class Demodulation:
         for i in range(-3,4):
             r_half += fft_symbols[:, ffSize//2 + i]
 
-        r_noise = 0
-        for i in range(-7,7):
-            r_noise += fft_symbols[:, i]
-        # r_noise *= 3
+    
+        r_noise  = r_half/5 * 30
 
-        r_signal = r0 + r1
-        SNR = 10*np.log10(r_signal/r_noise -1)
+        r_signal = 0
+        for i in range(-15,15):
+            r_signal += fft_symbols[:, i]
+        
+        SNR = 10*np.log10(r_signal/r_noise)
         
 
         return hard_decision, [r0, r1, r_half], SNR
@@ -379,10 +380,6 @@ class PostProcessing:
         if role.lower() not in ["destination", "relay"]:
             raise ValueError("Role must be either 'destination' or 'relay'")
         self.role = role.lower()
-        # if role == "destination":
-        #     self.threshold = conf.THRESHOLD_DEST
-        # elif role == "relay":
-        #     self.threshold = conf.THRESHOLD_RELAY
         self.file = file
         self.conf = conf
         self.demod = demod
@@ -393,11 +390,6 @@ class PostProcessing:
 
 
         self.fltr = scipy.signal.butter(30, self.conf.LPF_CUTOFF, 'low', analog=False, output='sos',fs=self.conf.RX_RATE)
-        
-
-
-
-
        
 
     def __len__(self):
@@ -420,12 +412,12 @@ class PostProcessing:
 
         res = []
         State = 0
-        threshold = np.max(np.max(np.abs(self.IQsamples)**2)) *.6
+        threshold = (np.max(np.abs(self.IQsamples))) *.4
 
         for i in range(recording_batches.shape[0]):
             # process the batch
             batch = recording_batches[i].copy()
-            bathc_power = np.max(np.abs(batch)**2)
+            bathc_power = np.max(np.abs(batch))
 
 
 
@@ -462,7 +454,7 @@ class PostProcessing:
             plt.xlabel('Samples', fontsize=30)
             plt.ylabel('|IQ|^2', fontsize=30)
             plt.hlines(threshold, 0, len(temp), colors='r', linestyles='dashed', label='Threshold')
-            plt.plot(np.abs(self.demod.butter(temp))**2)
+            plt.plot(np.abs(self.demod.butter(temp)))
             plt.title(f"{self.role} signal", fontsize=30)
             plt.show()
 
@@ -473,7 +465,7 @@ class PostProcessing:
         test_list = np.where(~np.isnan(res))
         for k, g in groupby(enumerate(test_list[0]), lambda ix: ix[0]-ix[1]):
             temp = list(map(itemgetter(1), g))
-            if len(temp)< self.conf.MIN_FRAME_SIZE:
+            if len(temp)< self.conf.MIN_FRAME_SIZE or len(temp) > self.conf.MIN_FRAME_SIZE*8:
                 continue 
             frames[cnt] = np.array(res[temp[0]:  temp[-1]])
             cnt += 1

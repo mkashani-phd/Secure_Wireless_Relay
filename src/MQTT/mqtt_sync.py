@@ -43,10 +43,10 @@ class MQTT_RX(MQTTBase):
         # Continuously publish "ready" until we detect a "begin" message.
         print(f"[{self.role.upper()} RX] Publishing 'ready'")
         while not self.begin_received:
-            self.client.publish(topic=self.ready_topic, payload=self.role)
-            time.sleep(1)
+            self.client.publish(topic=self.ready_topic, payload=self.role, qos=1)
+            time.sleep(.1)
         # Once begin received, disconnect.
-        print(f"[{self.role.upper()} RX] 'Begin' detected, disconnecting.")
+        print(f"[{self.role.upper()} RX] 'Begin' detected.")
         self.client.disconnect()
 
 

@@ -122,7 +122,7 @@ class CONFIG:
         config['MAC_CODE_RATE'] = 1/3
         config['SUPERPOSED'] = False
         ############## PHY LAYER PARAMETERS #################
-        config['ACQ_TIME'] = 2
+        config['ACQ_TIME'] = 4
 
         config['TX_PAYLOAD_POWER_SCALE'] = 0.01
         config['ALPHA'] = 0.2
@@ -140,14 +140,14 @@ class CONFIG:
 
         ########## USRP PARAMETERS ######################
         config['SOURCE'] = "8000169"
-        config['TX_GAIN'] = 70 # max gain 89.8
+        config['TX_GAIN'] = 30 
 
-        config['DESTINATION'] = "E3R10Z5NW" #"8000122"
-        config['RX_GAIN'] = 20.0 # Automatic Gain Control "agc" max gain 76
+        config['DESTINATION'] = "8000182"
+        config['RX_GAIN'] = 50.0 
 
-        config['RELAY'] = "8000182"
+        config['RELAY'] = "8000122" 
         config['TX_RELAY_GAIN'] = config['TX_GAIN'] 
-        config['RX_RELAY_GAIN'] = 60 # max gain 31.5
+        config['RX_RELAY_GAIN'] = 50 
 
 
         
