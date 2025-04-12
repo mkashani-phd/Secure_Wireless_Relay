@@ -3,3 +3,4 @@ src/__recording_cache__/
 src/__pycache__/
 src/MQTT/MQTT.json
 *.iq
+*.pyc

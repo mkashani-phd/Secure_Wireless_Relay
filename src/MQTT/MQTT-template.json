@@ -1,6 +1,6 @@
 {
-    "AIO_KEY": "",
     "AIO_USERNAME": "",
+    "AIO_KEY": "",
     "BROKER": "io.adafruit.com",
     "PORT": 1883
 }
