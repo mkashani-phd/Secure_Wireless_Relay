@@ -124,7 +124,7 @@ class CONFIG:
         ############## PHY LAYER PARAMETERS #################
         config['ACQ_TIME'] = 4
 
-        config['TX_PAYLOAD_POWER_SCALE'] = 0.01
+        config['TX_PAYLOAD_POWER_SCALE'] = 0.005
         config['ALPHA'] = 0.2
 
 
@@ -140,7 +140,7 @@ class CONFIG:
 
         ########## USRP PARAMETERS ######################
         config['SOURCE'] = "8000169"
-        config['TX_GAIN'] = 30 
+        config['TX_GAIN'] = 55 
 
         config['DESTINATION'] = "8000182"
         config['RX_GAIN'] = 50.0 
