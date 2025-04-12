@@ -1,5 +1,5 @@
 # Ignore the __recording_cache__ folder in the src directory
 src/__recording_cache__/
 src/__pycache__/
-src/MQTT.json
+src/MQTT/MQTT.json
 *.iq
