@@ -10,15 +10,15 @@ from . import channelCoding as cc
 
 class TX:
 
-    def __init__(self, conf = config.CONFIG(), usrp: uhd.usrp.MultiUSRP = None,  Role = "Source"):
-        if Role not in ["Source", "Relay"]:
-            raise ValueError("Role must be either 'Source' or 'Relay'")
+    def __init__(self, conf = config.CONFIG(), usrp: uhd.usrp.MultiUSRP = None,  role = "source"):
+        if role.lower() not in ["source", "relay"]:
+            raise ValueError("Role must be either 'source' or 'relay'")
         
-        self.Role = Role
+        self.role = role.lower()
         self.conf = conf
         self.usrp = usrp
         if usrp is None:
-            if self.Role == "Source":
+            if self.role == "source":
                 self.usrp = uhd.usrp.MultiUSRP(f"serial={conf.SOURCE}")
             else:
                 self.usrp = uhd.usrp.MultiUSRP(f"serial={conf.RELAY}")

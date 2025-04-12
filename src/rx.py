@@ -6,8 +6,6 @@ import scipy.signal
 from scipy.special import i0
 import numpy as np
 import pymongo
-import datetime 
-import copy
 
 
 import matplotlib.pyplot as plt
@@ -17,26 +15,49 @@ from . import channelCoding as cc
 
 
 class RX:
-    def __init__(self, conf:config.CONFIG = config.CONFIG(), usrp:uhd.usrp.MultiUSRP = None, Role:str = "Destination"):
+    def __init__(self, conf:config.CONFIG = config.CONFIG(), usrp:uhd.usrp.MultiUSRP = None, role:str = "destination"):
         self.conf = conf
 
-        if Role not in ["Destination", "Relay"]:
-            raise ValueError("Role must be either 'Destination' or 'Relay'")
-            exit(1)
-        self.Role = Role
+        if role.lower() not in ["destination", "relay"]:
+            raise ValueError("role must be either 'destination' or 'relay'")
+        self.role = role.lower()
 
         if usrp is None:
-            if self.Role == "Destination":
+            if self.role == "destination":
                 self.usrp = uhd.usrp.MultiUSRP(f"serial={conf.DESTINATION}")
-                self.threstold = conf.THRESHOLD_DEST
-            elif self.Role == "Relay":
+            elif self.role == "relay":
                 self.usrp = uhd.usrp.MultiUSRP(f"serial={conf.RELAY}")
-                self.threstold = conf.THRESHOLD_RELAY
         else:
             self.usrp = usrp
 
         self.filt = scipy.signal.butter(30, self.conf.LPF_CUTOFF, 'low', analog=False, output='sos',fs=self.conf.RX_RATE)
     
+
+        self.usrp.set_time_now(uhd.types.TimeSpec(0.0)) # this should work well for syncing the MIMO channel
+
+        self.streamer = self._config_streamer( chnls=self.conf.CHANNEL,spp=None)
+        self.batch_size, self.nr_batches = self._batch_init(streamer=  self.streamer, batch_size= 1920)
+        self.recv_buffer = np.zeros((len(self.conf.CHANNEL), self.batch_size), dtype=np.complex64)
+        self.metadata = uhd.types.RXMetadata()
+
+        for chnl in self.conf.CHANNEL:
+            self.usrp.set_rx_rate(self.conf.RX_RATE, chnl)
+            self.usrp.set_rx_freq(uhd.libpyuhd.types.tune_request(self.conf.FREQ), chnl)
+            
+            if self.role == "destination":
+                if self.conf.RX_GAIN != "agc":
+                    self.usrp.set_rx_gain(self.conf.RX_GAIN, chnl)
+                else:
+                    self.usrp.set_rx_agc(True, 0)
+                    print("AGC is enabled")
+            elif self.role == "Relay":
+                if self.conf.RX_RELAY_GAIN != "agc":
+                    self.usrp.set_rx_gain(self.conf.RX_RELAY_GAIN, chnl)
+                else:
+                    self.usrp.set_rx_agc(True, 0)
+                    print("AGC is enabled")
+
+        
     #decunstruct the USRP object
     def __del__(self):
         self.usrp = None 
@@ -71,53 +92,25 @@ class RX:
 
 
     def record(self):
-        self.usrp.set_time_now(uhd.types.TimeSpec(0.0)) # this should work well for syncing the MIMO channel
-
-        streamer = self._config_streamer( chnls=self.conf.CHANNEL,spp=None)
-        batch_size, nr_batches = self._batch_init(streamer=  streamer, batch_size= 1920)
-        recv_buffer = np.zeros((len(self.conf.CHANNEL), batch_size), dtype=np.complex64)
-        metadata = uhd.types.RXMetadata()
-
-        for chnl in self.conf.CHANNEL:
-            self.usrp.set_rx_rate(self.conf.RX_RATE, chnl)
-            self.usrp.set_rx_freq(uhd.libpyuhd.types.tune_request(self.conf.FREQ), chnl)
-            
-            if self.Role == "Destination":
-                if self.conf.RX_GAIN != "agc":
-                    self.usrp.set_rx_gain(self.conf.RX_GAIN, chnl)
-                else:
-                    self.usrp.set_rx_agc(True, 0)
-                    print("AGC is enabled")
-            elif self.Role == "Relay":
-                if self.conf.RX_RELAY_GAIN != "agc":
-                    self.usrp.set_rx_gain(self.conf.RX_RELAY_GAIN, chnl)
-                else:
-                    self.usrp.set_rx_agc(True, 0)
-                    print("AGC is enabled")
-            
-            
-
-        self._start_stream(streamer = streamer,batch_size= batch_size)
-        
-
+        self._start_stream(streamer = self.streamer,batch_size= self.batch_size)
         
         os.makedirs(os.path.join(os.path.dirname(__file__),"__recording_cache__"), exist_ok=True)
-        file = os.path.join(os.path.dirname(__file__),"__recording_cache__", f"{self.Role}_"+str(np.round(self.usrp.get_rx_freq(),2))+"_"+str(np.round(self.usrp.get_rx_rate(),2))+"_"+str(self.conf.RX_GAIN)+"_"+str(self.conf.ACQ_TIME) + "_"+ str(self.conf.IN_CHAMBER)+"_.iq")
+        file = os.path.join(os.path.dirname(__file__),"__recording_cache__", f"{self.role}_"+str(np.round(self.usrp.get_rx_freq(),2))+"_"+str(np.round(self.usrp.get_rx_rate(),2))+"_"+str(self.conf.RX_GAIN)+"_"+str(self.conf.ACQ_TIME) + "_"+ str(self.conf.IN_CHAMBER)+"_.iq")
         f = open(file, "wb")
         start = time.time()
     
         for i in range(100):
-            streamer.recv(recv_buffer, metadata)
-        for i in range(nr_batches):
-            streamer.recv(recv_buffer, metadata)
-            recv_buffer[0].tofile(f)
+            self.streamer.recv(self.recv_buffer, self.metadata)
+        for i in range(self.nr_batches):
+            self.streamer.recv(self.recv_buffer, self.metadata)
+            self.recv_buffer[0].tofile(f)
   
 
             
         duration = time.time() - start
         print("\n Recorded Time: " + str(duration))
         # Stop Stream
-        self._stop_stream(streamer=streamer, recv_buffer=recv_buffer)
+        self._stop_stream(streamer=self.streamer, recv_buffer=self.recv_buffer)
         f.close()
         return file
     
@@ -177,11 +170,7 @@ class Demodulation:
         
         return best_offset
     
-    def llr_from_fft(self, fft, noise):
-        E_f1 = np.sum(np.power(np.abs(fft[len(fft)//2 - int(len(fft)*self.conf.FREQ_DEVIATION_PRECENTAGE)]),2))
-        E_f2 = np.sum(np.power(np.abs(fft[len(fft)//2 + int(len(fft)*self.conf.FREQ_DEVIATION_PRECENTAGE)]),2))
-        # llr for BFSK modulation is given by the following formula
-        return ( np.average(np.power(np.abs(fft),2)) / noise )(E_f1-E_f2)
+
     
     def hex_to_binary_list(self, hex_string):
         binary_list = []
@@ -297,12 +286,6 @@ class Demodulation:
         return self.compute_hard_desicion_and_rs(frame, self.conf.WINDOW, [9,190])
         
 
-    
-
-
-
-
-
 
     def decode_repetition_code(self, received, repeat):
         """
@@ -392,15 +375,14 @@ class Demodulation:
 
 
 class PostProcessing:
-    def __init__(self,  file:str, conf:config.CONFIG = config.CONFIG(), demod:Demodulation = Demodulation(), plot:bool = False, Role:str = "Destination"):
-        if Role not in ["Destination", "Relay"]:
-            raise ValueError("Role must be either 'Destination' or 'Relay'")
-            exit(1)
-        self.Role = Role
-        if Role == "Destination":
-            self.threshold = conf.THRESHOLD_DEST
-        elif Role == "Relay":
-            self.threshold = conf.THRESHOLD_RELAY
+    def __init__(self,  file:str, conf:config.CONFIG = config.CONFIG(), demod:Demodulation = Demodulation(), plot:bool = False, role:str = "destination"):
+        if role.lower() not in ["destination", "relay"]:
+            raise ValueError("Role must be either 'destination' or 'relay'")
+        self.role = role.lower()
+        # if role == "destination":
+        #     self.threshold = conf.THRESHOLD_DEST
+        # elif role == "relay":
+        #     self.threshold = conf.THRESHOLD_RELAY
         self.file = file
         self.conf = conf
         self.demod = demod
@@ -438,7 +420,7 @@ class PostProcessing:
 
         res = []
         State = 0
-        threshold = self.threshold
+        threshold = np.max(np.max(np.abs(self.IQsamples)**2)) *.6
 
         for i in range(recording_batches.shape[0]):
             # process the batch
@@ -479,9 +461,9 @@ class PostProcessing:
             plt.yticks(fontsize=30)
             plt.xlabel('Samples', fontsize=30)
             plt.ylabel('|IQ|^2', fontsize=30)
-            plt.hlines(self.threshold, 0, len(temp), colors='r', linestyles='dashed', label='Threshold')
+            plt.hlines(threshold, 0, len(temp), colors='r', linestyles='dashed', label='Threshold')
             plt.plot(np.abs(self.demod.butter(temp))**2)
-            plt.title(f"{self.Role} signal", fontsize=30)
+            plt.title(f"{self.role} signal", fontsize=30)
             plt.show()
 
 

@@ -8,8 +8,6 @@ import os
 
 class CONFIG:
     def __init__(self, config_yaml_path = None):
-        self.PAYLOAD = "This message is the default payload for the tests, and is 1088 bits long. It will be superposed with MAC tag of 256 bits with Rate= 1/3?This message is the default payload for the tests, and is 1088 bits long. It will be superposed with MAC tag of 256 bits with Rate= 1/3?This message is the default payload for the tests, and is 1088 bits long. It will be superposed with MAC tag of 256 bits with Rate= 1/3?"
-
         if config_yaml_path == None:
             try:
                 self.load_config(config_yaml_path = "config.yaml")
@@ -28,7 +26,7 @@ class CONFIG:
                 print(exc)
 
         # Read the __cache__/AIO_KEY.json file relative to this file
-        cache_file_path = os.path.join(os.path.dirname(__file__), "MQTT.json")
+        cache_file_path = os.path.join(os.path.dirname(__file__), "MQTT","MQTT.json")
         try:
             with open(cache_file_path, "r") as file:
                 self.MQTT = json.load(file)
@@ -60,9 +58,8 @@ class CONFIG:
         self.ACQ_TIME = self.config['ACQ_TIME']
         self.MIMO = self.config['MIMO']
         self.CHANNEL = [0]
-        self.LINIENT = self.config['LINIENT']
-        self.THRESHOLD_DEST = self.config['THRESHOLD_Dest']
-        self.THRESHOLD_RELAY = self.config['THRESHOLD_Relay']
+        # self.THRESHOLD_DEST = self.config['THRESHOLD_Dest']
+        # self.THRESHOLD_RELAY = self.config['THRESHOLD_Relay']
 
 
         self.IN_CHAMBER = self.config['IN_CHAMBER']
@@ -77,7 +74,6 @@ class CONFIG:
 
         self.MIN_FRAME_SIZE = self.config['MIN_FRAME_SIZE']
         self.WINDOW = self.config['WINDOW']
-        self.FREQ_DEVIATION_PRECENTAGE = self.config['FREQ_DEVIATION_PRECENTAGE']
 
         self._minSize = self.config['_minSize']
         self._maxSize = self.config['_maxSize']
@@ -113,57 +109,50 @@ class CONFIG:
     def create_default_config(self,default_config_yaml_path = "default_config.yaml"):
         config = {}
 
-        config['SOURCE'] = "8000169"
-        config['RELAY'] = "8000182"
-        # config['DESTINATION'] = "8000122"
-        config['DESTINATION'] = "E3R10Z5NW"
-
-        config['MAC_KEY'] = "key"
-        config['FREQ'] = 1.9e9
-
-        config['TX_RATE'] = 1e6
-        config['TX_GAIN'] = 60 # max gain 89.8
-        config['TX_RELAY_GAIN'] = 60 
-        config['TX_SPS'] = 40
-
-        config['TX_PAYLOAD_POWER_SCALE'] = 0.01
-        config['ALPHA'] = 0.2
-
-        config['RX_RATE'] = 5e6
-        config['RX_GAIN'] = 50.0 # Automatic Gain Control "agc" max gain 76
-        config['RX_RELAY_GAIN'] = 50.0 # max gain 31.5
-        # aviod the agc if the SNR calculation is needed
-        config['LPF_CUTOFF'] = 3e5
-
-        
-        config['MIMO'] = False
-        config['ACQ_TIME'] = 10
-        config['IN_CHAMBER'] = False
-
-
-        # repeat the preamble 10 times
-        PREAMBLE_REPEAT = 15
-        # the reason for long preamble is the power warm up on the SDR
+        ########### APPLICATION LAYER PARAMETERS ############
+        PAYLOAD = "This message is the default payload for the tests, and is 1088 bits long. It will be superposed with MAC tag of 256 bits with Rate= 1/3?This message is the default payload for the tests, and is 1088 bits long. It will be superposed with MAC tag of 256 bits with Rate= 1/3?This message is the default payload for the tests, and is 1088 bits long. It will be superposed with MAC tag of 256 bits with Rate= 1/3?"
+        PREAMBLE_REPEAT = 10
         PREAMBLE =  [+1, +1, +1, +1, +1, 0, 0, +1, +1, 0, +1, 0, +1]
         PREAMBLE = np.repeat(PREAMBLE, PREAMBLE_REPEAT).tolist()
 
         config['PREAMBLE'] = PREAMBLE
         config['PREAMBLE_REPEAT'] = PREAMBLE_REPEAT
-        config['PAYLOAD'] = self.PAYLOAD
+        config['PAYLOAD'] = PAYLOAD
         config['MSG_CODE_RATE'] = 1
         config['MAC_CODE_RATE'] = 1/3
         config['SUPERPOSED'] = False
+        ############## PHY LAYER PARAMETERS #################
+        config['ACQ_TIME'] = 2
+
+        config['TX_PAYLOAD_POWER_SCALE'] = 0.01
+        config['ALPHA'] = 0.2
 
 
-        # detection and decoding parameters
-        config['MIN_FRAME_SIZE'] = (len(self.PAYLOAD)/config['MSG_CODE_RATE']+2*len(PREAMBLE))* config['TX_SPS'] * config['RX_RATE']/config['TX_RATE']
-        config['LINIENT'] = 100
-        config['THRESHOLD_Dest'] = 0.01
-        config['THRESHOLD_Relay'] = 0.01
+        config['MAC_KEY'] = "key"
+        config['FREQ'] = 1.9e9
+        config['TX_SPS'] = 40
+        config['TX_RATE'] = 1e6
+        config['RX_RATE'] = 5e6
+        config['LPF_CUTOFF'] = 3e5 
 
+        config['MIN_FRAME_SIZE'] = (len(PAYLOAD)/config['MSG_CODE_RATE']+2*len(PREAMBLE))* config['TX_SPS'] * config['RX_RATE']/config['TX_RATE']
         config['WINDOW'] = int(config['TX_SPS'] * config['RX_RATE']/config['TX_RATE'])
-        config['FREQ_DEVIATION_PRECENTAGE'] = 10/100 
 
+        ########## USRP PARAMETERS ######################
+        config['SOURCE'] = "8000169"
+        config['TX_GAIN'] = 70 # max gain 89.8
+
+        config['DESTINATION'] = "E3R10Z5NW" #"8000122"
+        config['RX_GAIN'] = 20.0 # Automatic Gain Control "agc" max gain 76
+
+        config['RELAY'] = "8000182"
+        config['TX_RELAY_GAIN'] = config['TX_GAIN'] 
+        config['RX_RELAY_GAIN'] = 60 # max gain 31.5
+
+
+        
+        config['MIMO'] = False
+        config['IN_CHAMBER'] = False
 
 
         config['_minSize'] = 1e3
