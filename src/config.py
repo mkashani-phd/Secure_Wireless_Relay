@@ -39,7 +39,7 @@ class CONFIG:
         cache_file_path = os.path.join(os.path.dirname(__file__), "MongoDB","connectionString.json")
         try:
             with open(cache_file_path, "r") as file:
-                self.connectionString = json.load(file)
+                self.connectionString = json.load(file)['connectionString']
         except FileNotFoundError:
             print("connectionString.json file not found. Please use the rename the connectionString-template.json to connectionString.json in the MongoDB folder")
             print("Using MongoDB is not necessary for the tests and other method such as files or databases can be used!")
