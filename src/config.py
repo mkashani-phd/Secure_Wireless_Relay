@@ -132,9 +132,9 @@ class CONFIG:
         config['MAC_CODE_RATE'] = 1/3
         config['SUPERPOSED'] = False
         ############## PHY LAYER PARAMETERS #################
-        config['ACQ_TIME'] = 4
+        config['ACQ_TIME'] = 3.0
 
-        config['TX_PAYLOAD_POWER_SCALE'] = 0.005
+        
         config['ALPHA'] = 0.2
 
 
@@ -150,14 +150,18 @@ class CONFIG:
 
         ########## USRP PARAMETERS ######################
         config['SOURCE'] = "8000169"
-        config['TX_GAIN'] = 55 
+        config['TX_GAIN'] = 60 
+        config['TX_PAYLOAD_POWER_SCALE'] = 0.01
 
         config['DESTINATION'] = "8000182"
         config['RX_GAIN'] = 50.0 
 
+
+
+
         config['RELAY'] = "8000122" 
         config['TX_RELAY_GAIN'] = config['TX_GAIN'] 
-        config['RX_RELAY_GAIN'] = 50 
+        config['RX_RELAY_GAIN'] = config['RX_GAIN'] 
 
 
         

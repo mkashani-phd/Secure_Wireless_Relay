@@ -235,10 +235,10 @@ class Demodulation:
             r_half += fft_symbols[:, ffSize//2 + i]
 
     
-        r_noise  = r_half/5 * 30
+        r_noise  = r_half/5 * 40
 
         r_signal = 0
-        for i in range(-15,15):
+        for i in range(-20,20):
             r_signal += fft_symbols[:, i]
         
         SNR = 10*np.log10(r_signal/r_noise)
