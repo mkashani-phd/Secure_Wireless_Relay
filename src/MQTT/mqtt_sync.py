@@ -72,8 +72,6 @@ class MQTT_RX(MQTTBase):
             self.client.publish(topic=self.error_topic, payload=f'{self.role} error', qos=1)
             self.ERROR = True
             print(f"[{self.role.upper()} RX] publishing 'error'") if self.verbose else None
-
-
         
         self.client.disconnect()    
         return False if self.ERROR else True
