@@ -99,7 +99,7 @@ class MQTT_TX(MQTTBase):
 
 
     def on_connect(self, client, userdata, flags, rc):
-        print(f"[SOURCE TX] Connected. Subscribing to '{self.ready_topic}'") if self.verbose else None
+        print(f"[{self.role.upper()} TX] Connected. Subscribing to '{self.ready_topic}'") if self.verbose else None
         self.client.subscribe(self.ready_topic)
         self.client.subscribe(self.error_topic)
 
@@ -120,9 +120,9 @@ class MQTT_TX(MQTTBase):
             print(f"[{self.role.upper()} TX] Error decoding JSON message") if self.verbose else None
             return
         
-        if self.phase != phase:
+        if self.phase != phase and self.role == 'relay':
             print(f"[{self.role.upper()} TX] Received 'ready' from {role} in phase {phase}, but {self.role} is in phase {self.phase}") if self.verbose else None
-            # self.client.publish(topic=self.error_topic, payload=f'{self.role} phase mismatch error', qos=1)
+            self.client.publish(topic=self.error_topic, payload=f'{self.role} phase mismatch error', qos=1)
             return
         
         if not self.ready_status[phase][role]:
