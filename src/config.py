@@ -75,6 +75,7 @@ class CONFIG:
         self.IN_CHAMBER = self.config['IN_CHAMBER']
 
         self.PREAMBLE = self.config['PREAMBLE']
+        self.POSTAMBLE = self.config['POSTAMBLE']
         self.PREAMBLE_REPEAT = self.config['PREAMBLE_REPEAT']
         self.PAYLOAD = self.config['PAYLOAD']
         self.MSG_CODE_RATE = self.config['MSG_CODE_RATE']
@@ -122,10 +123,13 @@ class CONFIG:
         ########### APPLICATION LAYER PARAMETERS ############
         PAYLOAD = "This message is the default payload for the tests, and is 1088 bits long. It will be superposed with MAC tag of 256 bits with Rate= 1/3?This message is the default payload for the tests, and is 1088 bits long. It will be superposed with MAC tag of 256 bits with Rate= 1/3?This message is the default payload for the tests, and is 1088 bits long. It will be superposed with MAC tag of 256 bits with Rate= 1/3?"
         PREAMBLE_REPEAT = 10
-        PREAMBLE =  [+1, +1, +1, +1, +1, 0, 0, +1, +1, 0, +1, 0, +1]
+        PREAMBLE =  [1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1]
+        POSTAMBLE =  [0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0]
         PREAMBLE = np.repeat(PREAMBLE, PREAMBLE_REPEAT).tolist()
+        POSTAMBLE = np.repeat(POSTAMBLE, PREAMBLE_REPEAT).tolist()
 
         config['PREAMBLE'] = PREAMBLE
+        config['POSTAMBLE'] = POSTAMBLE
         config['PREAMBLE_REPEAT'] = PREAMBLE_REPEAT
         config['PAYLOAD'] = PAYLOAD
         config['MSG_CODE_RATE'] = 1
@@ -145,7 +149,7 @@ class CONFIG:
         config['RX_RATE'] = 5e6
         config['LPF_CUTOFF'] = 3e5 
 
-        config['MIN_FRAME_SIZE'] = (len(PAYLOAD)/config['MSG_CODE_RATE']+2*len(PREAMBLE))* config['TX_SPS'] * config['RX_RATE']/config['TX_RATE']
+        config['MIN_FRAME_SIZE'] = (len(PAYLOAD)/config['MSG_CODE_RATE']+2*len(PREAMBLE)*PREAMBLE_REPEAT)* config['TX_SPS'] * config['RX_RATE']/config['TX_RATE']
         config['WINDOW'] = int(config['TX_SPS'] * config['RX_RATE']/config['TX_RATE'])
 
         ########## USRP PARAMETERS ######################
