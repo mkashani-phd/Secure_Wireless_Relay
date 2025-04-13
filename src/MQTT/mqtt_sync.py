@@ -67,7 +67,7 @@ class MQTT_RX(MQTTBase):
         try:
             while not self.begin_received and not self.ERROR:
                 self.client.publish(topic=self.ready_topic, payload=json.dumps(payload), qos=1)
-                time.sleep(.1)
+                time.sleep(1)
         except:
             self.client.publish(topic=self.error_topic, payload=f'{self.role} error', qos=1)
             self.ERROR = True
@@ -122,6 +122,11 @@ class MQTT_TX(MQTTBase):
             print(f"[{self.role.upper()} TX] Received 'ready' from {role} in phase {phase}, but {self.role} is in phase {self.phase}") if self.verbose else None
             self.client.publish(topic=self.error_topic, payload=f'{self.role} phase mismatch error', qos=1)
             return
+        if self.phase != phase and self.role == 'source' and any(self.ready_status[self.phase][role]):
+            print(f"[{self.role.upper()} TX] Received 'ready' from {role} in phase {phase}, but {self.role} is in phase {self.phase}") if self.verbose else None
+            self.client.publish(topic=self.error_topic, payload=f'{self.role} phase mismatch error', qos=1)
+            return
+        
         
         if not self.ready_status[phase][role]:
             self.ready_status[phase][role] = True
