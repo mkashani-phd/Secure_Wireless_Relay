@@ -235,10 +235,10 @@ class Demodulation:
             r_half += fft_symbols[:, ffSize//2 + i]
 
     
-        r_noise  = r_half/5 * 30
+        r_noise  = r_half/5 * 40
 
         r_signal = 0
-        for i in range(-15,15):
+        for i in range(-20,20):
             r_signal += fft_symbols[:, i]
         
         SNR = 10*np.log10(r_signal/r_noise)
@@ -330,13 +330,13 @@ class Demodulation:
             # print("Known sequence not found")
             return None
 
-    def detect_message_indices(self,received, preamble, repeat, cooefficient=2):
+    def detect_message_indices(self,received, preamble, postamble, repeat, cooefficient=2):
         preamble = preamble
         received_start = self.find_best_sequence(received[:len(preamble)*cooefficient], preamble[::repeat], repeat)
-        received_end = self.find_best_sequence(received[-cooefficient*len(preamble):], preamble[::repeat], repeat)
+        received_end = self.find_best_sequence(received[-cooefficient*len(preamble):], postamble[::repeat], repeat)
         if received_start is None or received_end is None:
             return None, None
-        return received_start + len(preamble), received_end + len(received)-(cooefficient*len(preamble))
+        return received_start + len(preamble), received_end + len(received)-(cooefficient*len(postamble))
 
 
     
