@@ -122,7 +122,7 @@ class MQTT_TX(MQTTBase):
             print(f"[{self.role.upper()} TX] Received 'ready' from {role} in phase {phase}, but {self.role} is in phase {self.phase}") if self.verbose else None
             self.client.publish(topic=self.error_topic, payload=f'{self.role} phase mismatch error', qos=1)
             return
-        if self.phase != phase and self.role == 'source' and any(self.ready_status[self.phase][role]):
+        if self.phase != phase and self.role == 'source' and any(self.ready_status[self.phase].values()):
             print(f"[{self.role.upper()} TX] Received 'ready' from {role} in phase {phase}, but {self.role} is in phase {self.phase}") if self.verbose else None
             self.client.publish(topic=self.error_topic, payload=f'{self.role} phase mismatch error', qos=1)
             return
