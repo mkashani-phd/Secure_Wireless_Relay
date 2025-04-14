@@ -30,7 +30,7 @@ while True:
         continue
 
     rx.process_all_frames(file=file, phase=phase)
-
+    rx = None
     phase = 2
     tx = MAC_TX(ROLE=ROLE, conf=conf, SC=True)
 
@@ -39,6 +39,7 @@ while True:
         continue
     else:
         print(f"transmission {ROLE}, phase_{phase} done")
+    tx = None
 
 
 

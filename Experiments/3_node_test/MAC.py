@@ -42,8 +42,8 @@ class MAC_TX(MAC):
 
         if self.SC:
             self.encoded_MAC = cc.encode_LDPC(MAC_bits, 2048)
-            self.payload = self.payload[:len(self.encoded_MAC)]
-            MAC_bits = utils.hex_to_bits(hmac.new(conf.MAC_KEY.encode(), utils.bits_to_string(self.payload).encode(), 'sha256').hexdigest())
+            # self.payload = self.payload[:len(self.encoded_MAC)]
+            MAC_bits = utils.hex_to_bits(hmac.new(conf.MAC_KEY.encode(), conf.PAYLOAD.encode(), 'sha256').hexdigest())
             self.encoded_MAC = cc.encode_LDPC(MAC_bits, 2048)
 
             self.fsk_signal = self.tx.fsk_modulate(self.payload, # sends with half the power,
@@ -128,7 +128,7 @@ class MAC_RX(MAC):
 
 
     def process_all_frames(self, file, phase:int = 1):
-        self.pp = src.PostProcessing(file=file, conf=self.conf, demod=self.demod, role=self.ROLE, plot=True)
+        self.pp = src.PostProcessing(file=file, conf=self.conf, demod=self.demod, role=self.ROLE, plot=False)
         if self.pp.check():
             print("Recording is correct")
             # with ProcessPoolExecutor() as executor:
@@ -215,7 +215,8 @@ class MAC_SC_RX(MAC_RX):
                 'time': time.time(),
                 'config': copy.deepcopy(self.conf.config)
             }
-
+            collection.insert_one(insert)
+            return
         
         else:
             if phase == 1:

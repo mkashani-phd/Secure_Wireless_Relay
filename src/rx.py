@@ -142,7 +142,7 @@ class Demodulation:
         energies = []
         
         # Try different offsets in the range [0, max_offset)
-        for offset in range(self.conf.WINDOW):
+        for offset in range(self.conf.WINDOW//2):
             # Compute how many complete symbols we have given the offset.
             n_symbols = (len(signal) - offset) // symbol_length
             if n_symbols <= 0:
