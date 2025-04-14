@@ -162,11 +162,11 @@ class MAC_RX(MAC):
         self.pp = src.PostProcessing(file=file, conf=self.conf, demod=self.demod, role=self.ROLE, plot=False)
         if self.pp.check():
             print("Recording is correct")
-            # with ProcessPoolExecutor() as executor:
-            #     executor.map(self.process_frame, range(len(self.pp.Frames)), [phase]*len(self.pp.Frames))
+            with ProcessPoolExecutor() as executor:
+                executor.map(self.process_frame, range(len(self.pp.Frames)), [phase]*len(self.pp.Frames))
         
-            for i in range(len(self.pp.Frames)):
-                self.process_frame(i, phase)
+            # for i in range(len(self.pp.Frames)):
+            #     self.process_frame(i, phase)
 
 
 
@@ -283,13 +283,13 @@ class MAC_RX_SC(MAC_RX):
                 rs = [doc['r0'], doc['r1'], doc['r_half']]
                 doc['decoded_phase_2'] = True
                 collection_phase1.update_one({'_id': doc['_id']}, {'$set': doc})
-                # try:
-                Successive_Cancellation_llr = self.demod.successive_cancellation(msg_hard_decision, rs)
-                # except:
-                    # insert = {'error': 'successive cancellation failed!'}
-                    # print(f"[Frame {i}] Error: successive cancellation failed!")
-                    # collection.insert_one(insert)
-                    # return
+                try:
+                    Successive_Cancellation_llr = self.demod.successive_cancellation(msg_hard_decision, rs)
+                except:
+                    insert = {'error': 'successive cancellation failed!'}
+                    print(f"[Frame {i}] Error: successive cancellation failed!")
+                    collection.insert_one(insert)
+                    return
                 try:
                     mac = cc.decode_LDPC(Successive_Cancellation_llr, message_length=256)
                     mac_hex = utils.bits_to_hex(mac)
