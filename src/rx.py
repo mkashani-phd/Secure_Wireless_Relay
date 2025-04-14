@@ -2,10 +2,12 @@ import pymongo.collection
 import uhd, time, os
 from operator import itemgetter
 from itertools import groupby
-import scipy.signal 
-from scipy.special import i0
+import cupy as cp
+import cupyx.scipy.signal as cpx_signal
+import scipy.signal
 import numpy as np
 import pymongo
+
 
 
 import matplotlib.pyplot as plt
@@ -125,10 +127,11 @@ class Demodulation:
         self.conf = conf
         self.fltr = scipy.signal.butter(30, self.conf.LPF_CUTOFF, 'low', analog=False, output='sos',fs=self.conf.RX_RATE)
 
+
         
     def butter(self,input):
         return scipy.signal.sosfilt(self.fltr, input) 
-
+    
     def fft_max_peak(self, frame,window):
         fft = np.fft.fftshift(np.fft.fft(frame[:window]))
         peak = np.argmax(np.abs(fft))
@@ -190,7 +193,7 @@ class Demodulation:
 
         n_symbols = (len(signal) - offset) // symbol_length
         symbols = signal[offset:n_symbols * symbol_length + offset]
-# frame = self.butter(frame)
+        # frame = self.butter(frame)
         # Compute hard decision
         hard_decision = []
         for i in range(0, len(symbols), symbol_length):
@@ -246,6 +249,7 @@ class Demodulation:
 
         return hard_decision, [r0, r1, r_half], SNR
     
+
     
     
 
@@ -282,8 +286,6 @@ class Demodulation:
         return hex_string.lower()  # Convert to uppercase if desired
 
     def decode(self, frame):
-    # compute sliding fft of the signal every 40 samples where the peak is 1 and the rest 0
-        # lpf
         return self.compute_hard_desicion_and_rs(frame, self.conf.WINDOW, [9,190])
         
 
@@ -339,15 +341,7 @@ class Demodulation:
         return received_start + len(preamble), received_end + len(received)-(cooefficient*len(postamble))
 
 
-    
-    def ldpc_decode(self, llr_msg, llr_mac):
-        msg_H_param = cc.get_5G_ldpc_params("msg: 1024 code_rate: "+str(np.round(self.conf.MSG_CODE_RATE,2))+".txt")
-        mac_H_param = cc.get_5G_ldpc_params("msg: 256 code_rate: "+str(np.round(self.conf.MAC_CODE_RATE,2))+".txt")
 
-        msg = self.soft_decision(llr_msg, H_param=msg_H_param)
-        mac = self.soft_decision(llr_mac, H_param=mac_H_param)
-
-        return msg, mac
     
     def bits_to_symbols(self, bit_list):
         bit_array = np.array(bit_list)
@@ -355,13 +349,7 @@ class Demodulation:
         symbols = np.where(bit_array == 1, slope, -1*slope).astype(np.float32)
         return symbols
     
-    def fsk_modulate(self, bits):
 
-        bits_symbols = self.bits_to_symbols(bits)
-        bits_upsampled = np.repeat(bits_symbols, self.conf.WINDOW) / np.sqrt(self.conf.WINDOW)
-        bits_phase = np.cumsum(bits_upsampled)
-
-        return np.exp(1j * bits_phase).astype(np.complex64)
     
     def string_to_bits(self, s):
         bits = []
@@ -371,9 +359,198 @@ class Demodulation:
         return bits
 
 
+# class Demodulation:
+#     def __init__(self, conf:config.CONFIG = config.CONFIG()):
+#         self.conf = conf
+#         # self.fltr = cpx_signal.butter(
+#         #     30,
+#         #     self.conf.LPF_CUTOFF,
+#         #     'low',
+#         #     analog=False,
+#         #     output='sos',
+#         #     fs=self.conf.RX_RATE
+#         # )
+
+#     def butter(self, input):
+#         # return cpx_signal.sosfilt(self.fltr, input)
+#         return input
 
 
+#     def fft_max_peak(self, frame, window):
+#         fft = cp.fft.fftshift(cp.fft.fft(frame[:window]))
+#         peak = cp.argmax(cp.abs(fft)).get()
+#         return peak, fft
+    
+#     def decision(self, peak, threshold):
+#         return 0 if peak < threshold else 1
+    
 
+#     def find_best_offset(self, signal, symbol_length, tone_bins):
+#         best_offset = 0
+#         best_energy = -cp.inf
+
+#         for offset in range(self.conf.WINDOW):
+#             n_symbols = (len(signal) - offset) // symbol_length
+#             if n_symbols <= 0:
+#                 continue
+#             symbols = signal[offset:offset + n_symbols * symbol_length].reshape(n_symbols, symbol_length)
+#             fft_symbols = cp.fft.fft(symbols, axis=1)
+#             symbol_energies = cp.sum(cp.abs(fft_symbols[:, tone_bins])**2, axis=1)
+#             avg_energy = cp.mean(symbol_energies)
+#             if avg_energy > best_energy:
+#                 best_energy = avg_energy
+#                 best_offset = offset
+#         return best_offset
+    
+
+    
+#     def compute_hard_desicion_and_rs(self, signal, symbol_length, tone_bins, message_bits_for_sure=None):
+#         if message_bits_for_sure is None:
+#             message_bits_for_sure = self.string_to_bits(self.conf.PAYLOAD)
+
+#         signal = cp.asarray(signal, dtype=cp.complex64)
+
+#         offset = self.find_best_offset(signal, symbol_length, tone_bins)
+#         n_symbols = (len(signal) - offset) // symbol_length
+#         symbols = signal[offset:offset + n_symbols * symbol_length]
+
+#         hard_decision = []
+#         for i in range(0, len(symbols), symbol_length):
+#             chunk = symbols[i:i+symbol_length]
+#             filtered = self.butter(chunk)
+#             peak, _ = self.fft_max_peak(filtered, symbol_length)
+#             hard_decision.append(self.decision(peak, symbol_length // 2))
+
+#         fft_symbols = cp.abs(cp.fft.fft(symbols.reshape(n_symbols, symbol_length), axis=1))**2
+
+#         r0 = cp.sum(fft_symbols[:, tone_bins[1] - 3:tone_bins[1] + 4], axis=1)
+#         r1 = cp.sum(fft_symbols[:, tone_bins[0] - 3:tone_bins[0] + 4], axis=1)
+#         r_half = cp.sum(fft_symbols[:, fft_symbols.shape[1]//2 - 10:fft_symbols.shape[1]//2 + 10], axis=1)
+#         r_noise = r_half / 20 * 40
+#         r_signal = cp.sum(fft_symbols[:, :20], axis=1) + cp.sum(fft_symbols[:, -20:], axis=1)
+
+#         SNR = 10 * cp.log10(r_signal / r_noise)
+
+#         return hard_decision, [r0.get(), r1.get(), r_half.get()], SNR.get()
+
+#     def decode(self, frame):
+#         return self.compute_hard_desicion_and_rs(frame, self.conf.WINDOW, [9, 190])
+    
+#     def find_best_sequence(self, received, known_seq, repeat):
+#         received = cp.asarray(received, dtype=cp.int32)
+#         known_seq = cp.asarray(known_seq, dtype=cp.int32)
+
+#         best_index = -1
+#         best_score = -1
+#         best_match = None
+
+#         max_slide = received.shape[0] - len(known_seq) * repeat + 1
+#         for i in range(max_slide):
+#             window = received[i:]
+#             decoded, scores = self.decode_repetition_code(window, repeat)
+#             if decoded.shape[0] < len(known_seq):
+#                 continue
+#             decoded_seq = decoded[:len(known_seq)]
+#             score = cp.mean(scores[:len(known_seq)])
+
+#             if cp.all(decoded_seq == known_seq) and score > best_score:
+#                 best_score = score
+#                 best_index = i
+
+#         return int(best_index) if best_index != -1 else None
+    
+#     def decode_repetition_code(self, received, repeat):
+#         """
+#         Decodes a repetition-coded CuPy array by applying majority voting and calculating vote scores.
+#         """
+#         received = cp.asarray(received, dtype=cp.int32)
+#         n_chunks = received.shape[0] // repeat
+
+#         # Reshape into (num_chunks, repeat)
+#         trimmed = received[:n_chunks * repeat]
+#         reshaped = trimmed.reshape(n_chunks, repeat)
+
+#         # Compute mean of each chunk for majority decision (threshold at 0.5)
+#         decoded = (cp.mean(reshaped, axis=1) > 0.5).astype(cp.int32)
+
+#         # Count how many 0s and 1s per chunk, pick the max as the "vote score"
+#         count_0 = cp.sum(reshaped == 0, axis=1)
+#         count_1 = repeat - count_0
+#         scores = cp.maximum(count_0, count_1)
+
+#         return decoded, scores
+
+#     def detect_message_indices(self, received, preamble, postamble, repeat, cooefficient=2):
+#         """
+#         Detects the message indices in a repetition-coded CuPy array using GPU acceleration.
+#         """
+#         # Convert to CuPy array (if not already)
+#         received = cp.asarray(received, dtype=cp.int32)
+
+#         # Downsample preamble/postamble to match repeated pattern
+#         preamble_cp = cp.asarray(preamble[::repeat], dtype=cp.int32)
+#         postamble_cp = cp.asarray(postamble[::repeat], dtype=cp.int32)
+
+#         # Extract early and late regions for preamble/postamble detection
+#         prefix_region = received[:len(preamble) * cooefficient]
+#         suffix_region = received[-len(postamble) * cooefficient:]
+
+#         # Run GPU-accelerated pattern matching
+#         received_start = self.find_best_sequence(prefix_region, preamble_cp, repeat)
+#         received_end = self.find_best_sequence(suffix_region, postamble_cp, repeat)
+
+#         if received_start is None or received_end is None:
+#             return None, None
+
+#         # Compute actual message boundaries
+#         message_start = received_start + len(preamble)
+#         message_end = received.shape[0] - (len(postamble) * cooefficient) + received_end
+
+#         return int(message_start), int(message_end)
+
+
+#     def successive_cancellation(self, msg_decoded_bits, rs):
+#         r0, r1, r_half = [cp.asarray(r, dtype=cp.float32) for r in rs]  # Ensure all rs arrays are on GPU
+#         msg_bits = cp.asarray(msg_decoded_bits, dtype=cp.int32)
+
+#         alpha = self.conf.ALPHA
+#         SC_llr = []
+
+#         for i in range(min(1, len(msg_bits))):  # original code checks only i=0
+#             if msg_bits[i] == 0:
+#                 if r1[i] > alpha * r0[i]:
+#                     llr = cp.log(r_half[i] / r1[i])
+#                 else:
+#                     llr = cp.log(r0[i] / (alpha * r1[i]))
+#             else:
+#                 if r0[i] > alpha * r1[i]:
+#                     llr = cp.log(r0[i] / r_half[i])
+#                 else:
+#                     llr = cp.log((alpha * r0[i]) / r1[i])
+#             SC_llr.append(float(llr.get()))  # return as Python float (e.g., for later CPU use)
+
+#         return SC_llr
+
+
+    
+#     def hex_to_binary_list(self, hex_string):
+#         binary_list = []
+#         for hex_char in hex_string:
+#             binary_list.extend([int(bit) for bit in format(int(hex_char, 16), '04b')])
+#         return binary_list
+
+
+#     def binary_list_to_hex(self, binary_list):
+#         if len(binary_list) % 4 != 0:
+#             raise ValueError("Binary list must be multiple of 4")
+#         return ''.join(hex(int(''.join(map(str, binary_list[i:i+4])), 2))[2:] for i in range(0, len(binary_list), 4))
+
+#     def string_to_bits(self, s):
+#         bits = []
+#         for char in s:
+#             bits.extend([int(b) for b in format(ord(char), '08b')])
+#         return bits
+    
 
 class PostProcessing:
     def __init__(self,  file:str, conf:config.CONFIG = config.CONFIG(), demod:Demodulation = Demodulation(), plot:bool = False, role:str = "destination"):
@@ -412,7 +589,7 @@ class PostProcessing:
 
         res = []
         State = 0
-        threshold = (np.max(np.abs(self.IQsamples))) *.4
+        threshold = (np.max(np.abs(self.IQsamples))) *.5
 
         for i in range(recording_batches.shape[0]):
             # process the batch

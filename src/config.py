@@ -136,7 +136,7 @@ class CONFIG:
         config['MAC_CODE_RATE'] = 1/3
         config['SUPERPOSED'] = False
         ############## PHY LAYER PARAMETERS #################
-        config['ACQ_TIME'] = 3.0
+        config['ACQ_TIME'] = 4.0
 
         
         config['ALPHA'] = 0.2

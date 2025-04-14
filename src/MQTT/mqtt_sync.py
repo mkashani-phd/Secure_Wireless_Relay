@@ -67,7 +67,7 @@ class MQTT_RX(MQTTBase):
         try:
             while not self.begin_received and not self.ERROR:
                 self.client.publish(topic=self.ready_topic, payload=json.dumps(payload), qos=1)
-                time.sleep(1)
+                time.sleep(.1)
         except:
             self.client.publish(topic=self.error_topic, payload=f'{self.role} error', qos=1)
             self.ERROR = True
