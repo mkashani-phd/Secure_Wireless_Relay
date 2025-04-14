@@ -199,8 +199,10 @@ class MAC_SC_RX(MAC_RX):
         myclient = pymongo.MongoClient(self.conf.connectionString)
         mydb = myclient["MAC_SC"]
         collection=mydb[f'{self.ROLE}, phase_{phase}']
-        
-        msg_hard_decision, snr_mean, rs = self.primary_process(i)
+        try:
+            msg_hard_decision, snr_mean, rs = self.primary_process(i)
+        except:
+            return None
         message_str = utils.bits_to_string(msg_hard_decision)
 
         if self.ROLE == "relay":
