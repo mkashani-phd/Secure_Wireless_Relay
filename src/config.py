@@ -2,6 +2,7 @@ import yaml
 import numpy as np
 import json
 import os
+import pymongo
 
 
 
@@ -15,15 +16,12 @@ class CONFIG:
                 try:
                     self.load_default_config()
                 except:
-                    self.create_default_config()
+                    config = self.create_default_config()
+                    self.update_config(config, config_yaml_path = "default_config.yaml")
                     self.load_default_config()
             return
         
-        with open(config_yaml_path, 'r') as stream:
-            try:
-                self.config = yaml.safe_load(stream)
-            except yaml.YAMLError as exc:
-                print(exc)
+
 
         # Read the src/MQTT/MQTT.json file relative to this file
         cache_file_path = os.path.join(os.path.dirname(__file__), "MQTT","MQTT.json")
@@ -44,7 +42,33 @@ class CONFIG:
             print("connectionString.json file not found. Please use the rename the connectionString-template.json to connectionString.json in the MongoDB folder")
             print("Using MongoDB is not necessary for the tests and other method such as files or databases can be used!")
             self.connectionString = None
+
+            with open(config_yaml_path, 'r') as stream:
+                try:
+                    self.config = yaml.safe_load(stream)
+                except yaml.YAMLError as exc:
+                    print(exc)
+        
+        try:
+            client = pymongo.MongoClient(self.connectionString)
+            db = client["config"]
+            collection = db["config"]
+            try:
+                self.config = collection.find_one()
+            except:
+                config = self.create_default_config()
+                collection.insert_one(config)
+                # collection.update(config, config, {'upsert':True})
+        except:
+            self.config = collection.find_one()
+        finally:
+            client.close()
+        
+        self.config = self.config if self.config is not None else self.create_default_config()
+
+
          
+
 
         self.SOURCE = self.config['SOURCE']
         self.DESTINATION = self.config['DESTINATION']
@@ -117,7 +141,7 @@ class CONFIG:
                 return None
         self.__init__(default_config_yaml_path)
 
-    def create_default_config(self,default_config_yaml_path = "default_config.yaml"):
+    def create_default_config(self):
         config = {}
 
         ########### APPLICATION LAYER PARAMETERS ############
@@ -178,7 +202,9 @@ class CONFIG:
         config['_minFrames'] = 1
         config['_maxFrames'] = 40
 
-        self.update_config(config, config_yaml_path=default_config_yaml_path)
+        return config
+
+        
 
 
 def test():
