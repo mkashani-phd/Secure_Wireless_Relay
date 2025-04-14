@@ -1,4 +1,4 @@
-import yaml
+
 import numpy as np
 import json
 import os
@@ -8,20 +8,9 @@ import pymongo
 
 
 class CONFIG:
-    def __init__(self, config_yaml_path = None):
-        if config_yaml_path == None:
-            try:
-                self.load_config(config_yaml_path = "config.yaml")
-            except: 
-                try:
-                    self.load_default_config()
-                except:
-                    config = self.create_default_config()
-                    self.update_config(config, config_yaml_path = "default_config.yaml")
-                    self.load_default_config()
-            return
-        
+    def __init__(self):
 
+        
 
         # Read the src/MQTT/MQTT.json file relative to this file
         cache_file_path = os.path.join(os.path.dirname(__file__), "MQTT","MQTT.json")
@@ -39,35 +28,18 @@ class CONFIG:
             with open(cache_file_path, "r") as file:
                 self.connectionString = json.load(file)['connectionString']
         except FileNotFoundError:
-            print("connectionString.json file not found. Please use the rename the connectionString-template.json to connectionString.json in the MongoDB folder")
-            print("Using MongoDB is not necessary for the tests and other method such as files or databases can be used!")
-            self.connectionString = None
+            raise FileNotFoundError("MongoDB connection string file not found. Please use the rename the connectionString-template.json to connectionString.json in the MongoDB folder")
 
-            with open(config_yaml_path, 'r') as stream:
-                try:
-                    self.config = yaml.safe_load(stream)
-                except yaml.YAMLError as exc:
-                    print(exc)
         
-        try:
-            client = pymongo.MongoClient(self.connectionString)
-            db = client["config"]
-            collection = db["config"]
-            try:
-                self.config = collection.find_one()
-            except:
-                config = self.create_default_config()
-                collection.insert_one(config)
-                # collection.update(config, config, {'upsert':True})
-        except:
+
+        client = pymongo.MongoClient(self.connectionString)
+        db = client["config"]
+        collection = db["config"]
+        self.config = collection.find_one()
+        if self.config is None:
+            collection.insert_one(self.create_default_config())
             self.config = collection.find_one()
-        finally:
-            client.close()
-        
-        self.config = self.config if self.config is not None else self.create_default_config()
 
-
-         
 
 
         self.SOURCE = self.config['SOURCE']
@@ -115,32 +87,21 @@ class CONFIG:
         self._minFrames = self.config['_minFrames']
         self._maxFrames = self.config['_maxFrames']
 
-    def update_config(self, config, config_yaml_path = "config.yaml"):
-        with open(config_yaml_path, 'w') as stream:
-            try:
-                yaml.dump(config, stream)
-            except yaml.YAMLError as exc:
-                print(exc)
-        self.__init__(config_yaml_path)
-    
-    def load_config(self, config_yaml_path):
-        with open(config_yaml_path, 'r') as stream:
-            try:
-                self.config = yaml.safe_load(stream)
-                stream.close()
-            except yaml.YAMLError as exc:
-                print(exc)
-        self.__init__(config_yaml_path)
-        
-    def load_default_config(self, default_config_yaml_path = "default_config.yaml"):
-        with open(default_config_yaml_path, 'r') as stream:
-            try:
-                self.config = yaml.safe_load(stream)
-            except yaml.YAMLError as exc:
-                print(exc)
-                return None
-        self.__init__(default_config_yaml_path)
+    def update_config(self, config):
+        client = pymongo.MongoClient(self.connectionString)
+        db = client["config"]
+        collection = db["config"]
+        collection.update_one({}, {"$set": config}, upsert=True)
 
+        
+        
+    def reset_to_default_config(self):
+        client = pymongo.MongoClient(self.connectionString)
+        db = client["config"]
+        collection = db["config"]
+        collection.delete_many({})
+        self.update_config(self.create_default_config())
+        
     def create_default_config(self):
         config = {}
 
