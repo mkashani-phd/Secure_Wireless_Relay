@@ -2,8 +2,6 @@ import pymongo.collection
 import uhd, time, os
 from operator import itemgetter
 from itertools import groupby
-import cupy as cp
-import cupyx.scipy.signal as cpx_signal
 import scipy.signal
 import numpy as np
 import pymongo
