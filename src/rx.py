@@ -358,12 +358,21 @@ class PostProcessing:
         
 
     def frameFinder(self):
-        batch_size = self.conf.WINDOW
+        batch_size = self.conf.WINDOW*10
         recording = self.IQsamples.copy()
         if self.IQsamples.size % batch_size != 0:
             recording = np.concatenate((recording, np.zeros(batch_size - self.IQsamples.size % batch_size)))
         recording_batches = recording.reshape(-1, batch_size)
-        
+
+        freq_axis = np.fft.fftshift(np.fft.fftfreq(batch_size, d=1/5e6))
+
+        # Find indices corresponding to -300kHz and 300kHz
+        lower_bound = np.where(freq_axis >= -300e3)[0][0]
+        upper_bound = np.where(freq_axis <= 300e3)[0][-1]
+
+        print("lower_bound: ", lower_bound)
+        print("upper_bound: ", upper_bound)
+
 
         res = []
         State = 0
@@ -374,11 +383,22 @@ class PostProcessing:
             batch = recording_batches[i].copy()
             bathc_power = np.max(np.abs(batch))
 
+            fft = np.fft.fftshift(np.fft.fft(batch))
+
+            # Compute energy in the band of interest (-300kHz to 300kHz)
+            energy_band = np.sum(np.abs(fft[lower_bound:upper_bound])**2)
+
+            # Compute energy in the rest of the band
+            energy_rest = np.sum(np.abs(fft)**2) - energy_band
+
+            # Compare energies
+            energy_ratio =  energy_band / energy_rest
+
 
 
             if State == 0: # Wait for the rising edge of the begining burst
                 # check if we received a burst
-                if  bathc_power> threshold:
+                if  energy_ratio > 5:
                     State = 1
                     res.extend(batch)
                 else:

@@ -68,7 +68,7 @@ class MAC_TX(MAC):
 
     def transmit(self, repeat:int = 10):
         phase = 1 if self.ROLE == "source" else 2
-        if src.MQTT_TX(conf=self.conf, role=self.ROLE, phase=phase).wait_for_all_ready(sleep_time=1):
+        if src.MQTT_TX(conf=self.conf, role=self.ROLE, phase=phase, verbose=1).wait_for_all_ready(sleep_time=1):
             for i in range(repeat):
                 self.tx.send_waveform(self.fsk_signal)
                 time.sleep(0.1)
@@ -90,7 +90,7 @@ class MAC_RX(MAC):
         self.pp = None
 
     def record(self, phase:int = 1):
-        if src.MQTT_RX(conf=self.conf, role=self.ROLE, phase=phase).send_ready_and_wait_for_begin():
+        if src.MQTT_RX(conf=self.conf, role=self.ROLE, phase=phase, verbose=1).send_ready_and_wait_for_begin():
             file = self.rx.record()
             return file
         else:
@@ -249,17 +249,21 @@ class MAC_SC_RX(MAC_RX):
                 rs = [doc['r0'], doc['r1'], doc['r_half']]
                 doc['decoded_phase_2'] = True
                 collection_phase1.update_one({'_id': doc['_id']}, {'$set': doc})
-
-                Successive_Cancellation_llr = self.demod.successive_cancellation(msg_hard_decision, rs)
-
-                # try:
-                mac = cc.decode_LDPC(Successive_Cancellation_llr, message_length=256)
-                mac_hex = utils.bits_to_hex(mac)
-                # except:
-                    # insert = {'error': 'ldpc decoding failed!'}
-                    # print(f"[Frame {i}] Error: ldpc decoding failed!")
-                    # collection.insert_one(insert)
-                    # return
+                try:
+                    Successive_Cancellation_llr = self.demod.successive_cancellation(msg_hard_decision, rs)
+                except:
+                    insert = {'error': 'successive cancellation failed!'}
+                    print(f"[Frame {i}] Error: successive cancellation failed!")
+                    collection.insert_one(insert)
+                    return
+                try:
+                    mac = cc.decode_LDPC(Successive_Cancellation_llr, message_length=256)
+                    mac_hex = utils.bits_to_hex(mac)
+                except:
+                    insert = {'error': 'ldpc decoding failed!'}
+                    print(f"[Frame {i}] Error: ldpc decoding failed!")
+                    collection.insert_one(insert)
+                    return
 
                 if mac is not None:
                     expected_mac = hmac.new(
