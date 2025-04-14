@@ -29,22 +29,54 @@ class MAC():
 
 
 class MAC_TX(MAC):
-    def __init__(self, ROLE:str, conf:src.CONFIG = src.CONFIG(), SC:bool = False):
+    def __init__(self, ROLE:str, conf:src.CONFIG = src.CONFIG()):
         super().__init__(ROLE, conf)
-
-
-
-        self.SC = SC
         self.payload = utils.string_to_bits(conf.PAYLOAD)
-        MAC_bits = utils.hex_to_bits(hmac.new(conf.MAC_KEY.encode(), conf.PAYLOAD.encode(), 'sha256').hexdigest())
-
+        self.MAC_bits = utils.hex_to_bits(hmac.new(conf.MAC_KEY.encode(), conf.PAYLOAD.encode(), 'sha256').hexdigest())
         self.tx = src.TX(role=ROLE, conf=conf)
 
-        if self.SC:
-            self.encoded_MAC = cc.encode_LDPC(MAC_bits, 2048)
-            # self.payload = self.payload[:len(self.encoded_MAC)]
-            MAC_bits = utils.hex_to_bits(hmac.new(conf.MAC_KEY.encode(), conf.PAYLOAD.encode(), 'sha256').hexdigest())
-            self.encoded_MAC = cc.encode_LDPC(MAC_bits, 2048)
+        self.fsk_signal = None
+
+    def transmit(self, repeat:int = 10):
+        phase = 1 if self.ROLE == "source" else 2
+        if src.MQTT_TX(conf=self.conf, role=self.ROLE, phase=phase, verbose=1).wait_for_all_ready(sleep_time=1):
+            for i in range(repeat):
+                self.tx.send_waveform(self.fsk_signal)
+                time.sleep(0.1)
+            return True
+        
+        else:
+            print("failed synchronization")
+            return False
+
+
+class MAC_TX_1D(MAC_TX):
+    def __init__(self, ROLE:str, conf:src.CONFIG = src.CONFIG()):
+        super().__init__(ROLE, conf)
+        if ROLE != "source":
+            raise ValueError("ROLE must be source for MAC_TX_1D")
+            
+        self.fsk_signal = self.tx.fsk_modulate(np.concatenate([self.payload, self.MAC_bits]), # sends with half the power,
+                # mac = self.encoded_MAC,
+                # alpha = self.conf.ALPHA,
+                sps = self.conf.TX_SPS, 
+                preamble = np.concatenate([ [0 for _ in range(1000//conf.TX_SPS)] , conf.PREAMBLE]), 
+                postamble = np.concatenate([conf.POSTAMBLE, [0 for _ in range(1000//conf.TX_SPS)]]),
+                scale = conf.TX_PAYLOAD_POWER_SCALE, # send the payload with half the power of the preamble
+                )
+        
+
+class MAC_TX_SC(MAC_TX):
+    def __init__(self, ROLE:str, conf:src.CONFIG = src.CONFIG()):
+        super().__init__(ROLE, conf)
+
+  
+
+
+
+
+        if ROLE == "source":
+            self.encoded_MAC = cc.encode_LDPC(self.MAC_bits, 2048)
 
             self.fsk_signal = self.tx.fsk_modulate(self.payload, # sends with half the power,
                     mac = self.encoded_MAC,
@@ -55,7 +87,6 @@ class MAC_TX(MAC):
                     scale = conf.TX_PAYLOAD_POWER_SCALE, # send the payload with half the power of the preamble
                     )
         else:
-            self.payload = np.concatenate([self.payload, MAC_bits])
             self.fsk_signal = self.tx.fsk_modulate(self.payload, # sends with half the power,
                     # mac = self.encoded_MAC,
                     # alpha = self.conf.ALPHA,
@@ -140,7 +171,7 @@ class MAC_RX(MAC):
 
 
 
-class MAC_1D_RX(MAC_RX):
+class MAC_RX_1D(MAC_RX):
 
 
     def __init__(self, ROLE:str, conf:src.CONFIG = src.CONFIG()):
@@ -188,7 +219,7 @@ class MAC_1D_RX(MAC_RX):
         }
         collection.insert_one(insert)
 
-class MAC_SC_RX(MAC_RX):
+class MAC_RX_SC(MAC_RX):
     def __init__(self, ROLE:str, conf:src.CONFIG = src.CONFIG()):
         super().__init__(ROLE, conf)
 
@@ -239,7 +270,10 @@ class MAC_SC_RX(MAC_RX):
 
             elif phase == 2:
                 collection_phase1 = mydb[f'{self.ROLE}, phase_1']
-                doc = collection_phase1.find_one({'decoded_phase_2': False})
+                doc = collection_phase1.find_one(
+                                                    {'decoded_phase_2': False},
+                                                    sort=[('_id', -1)]  # Sort by _id descending (latest first)
+                                                )
 
                 if doc is None:
                     insert = {'error': 'No phase 1 document found!'}
@@ -249,13 +283,13 @@ class MAC_SC_RX(MAC_RX):
                 rs = [doc['r0'], doc['r1'], doc['r_half']]
                 doc['decoded_phase_2'] = True
                 collection_phase1.update_one({'_id': doc['_id']}, {'$set': doc})
-                try:
-                    Successive_Cancellation_llr = self.demod.successive_cancellation(msg_hard_decision, rs)
-                except:
-                    insert = {'error': 'successive cancellation failed!'}
-                    print(f"[Frame {i}] Error: successive cancellation failed!")
-                    collection.insert_one(insert)
-                    return
+                # try:
+                Successive_Cancellation_llr = self.demod.successive_cancellation(msg_hard_decision, rs)
+                # except:
+                    # insert = {'error': 'successive cancellation failed!'}
+                    # print(f"[Frame {i}] Error: successive cancellation failed!")
+                    # collection.insert_one(insert)
+                    # return
                 try:
                     mac = cc.decode_LDPC(Successive_Cancellation_llr, message_length=256)
                     mac_hex = utils.bits_to_hex(mac)

@@ -134,7 +134,7 @@ class CONFIG:
         config['RX_RATE'] = 5e6
         config['LPF_CUTOFF'] = 3e5 
 
-        config['MIN_FRAME_SIZE'] = (len(PAYLOAD)/config['MSG_CODE_RATE']+2*len(PREAMBLE)*PREAMBLE_REPEAT)* config['TX_SPS'] * config['RX_RATE']/config['TX_RATE']
+        config['MIN_FRAME_SIZE'] = ((len(PAYLOAD*8)/config['MSG_CODE_RATE'])+2*len(PREAMBLE))* config['TX_SPS'] * config['RX_RATE']/config['TX_RATE']
         config['WINDOW'] = int(config['TX_SPS'] * config['RX_RATE']/config['TX_RATE'])
 
         ########## USRP PARAMETERS ######################
@@ -143,7 +143,7 @@ class CONFIG:
         config['TX_PAYLOAD_POWER_SCALE'] = 0.01
 
         config['DESTINATION'] = "8000182"
-        config['RX_GAIN'] = 50.0 
+        config['RX_GAIN'] = 30.0 
 
 
 

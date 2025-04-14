@@ -136,13 +136,14 @@ class Demodulation:
         return 0 if peak < threshold else 1
     
     def find_best_offset(self, signal, symbol_length, tone_bins):
-    
+        
+        # signal  = signal[0:int(len(self.conf.PREAMBLE)*self.conf.TX_SPS*self.conf.RX_RATE//self.conf.TX_RATE)]
         best_offset = 0
         best_energy = -np.inf
         energies = []
         
         # Try different offsets in the range [0, max_offset)
-        for offset in range(self.conf.WINDOW//2):
+        for offset in range(self.conf.WINDOW*2):
             # Compute how many complete symbols we have given the offset.
             n_symbols = (len(signal) - offset) // symbol_length
             if n_symbols <= 0:
@@ -245,6 +246,7 @@ class Demodulation:
     def successive_cancellation(self, msg_decoded_bits,  rs):
         r0,r1,r_half = rs
         SC_llr = []
+        print(f"len message: {len(msg_decoded_bits)}, len rs: {len(r0)}")
         for i in range(len(msg_decoded_bits)):            
             if msg_decoded_bits[i] == 0:                
 
@@ -273,7 +275,7 @@ class Demodulation:
         return hex_string.lower()  # Convert to uppercase if desired
 
     def decode(self, frame):
-        return self.compute_hard_desicion_and_rs(frame, self.conf.WINDOW, [9,190])
+        return self.compute_hard_desicion_and_rs(frame, self.conf.WINDOW, [10,190])
         
 
 
@@ -358,20 +360,18 @@ class PostProcessing:
         
 
     def frameFinder(self):
-        batch_size = self.conf.WINDOW*10
+        batch_size = self.conf.WINDOW*4
         recording = self.IQsamples.copy()
         if self.IQsamples.size % batch_size != 0:
             recording = np.concatenate((recording, np.zeros(batch_size - self.IQsamples.size % batch_size)))
         recording_batches = recording.reshape(-1, batch_size)
 
-        freq_axis = np.fft.fftshift(np.fft.fftfreq(batch_size, d=1/5e6))
+        # freq_axis = np.fft.fftshift(np.fft.fftfreq(batch_size, d=1/5e6))
 
-        # Find indices corresponding to -300kHz and 300kHz
-        lower_bound = np.where(freq_axis >= -300e3)[0][0]
-        upper_bound = np.where(freq_axis <= 300e3)[0][-1]
+        # # Find indices corresponding to -300kHz and 300kHz
+        # lower_bound = np.where(freq_axis >= -300e3)[0][0]
+        # upper_bound = np.where(freq_axis <= 300e3)[0][-1]
 
-        print("lower_bound: ", lower_bound)
-        print("upper_bound: ", upper_bound)
 
 
         res = []
@@ -383,22 +383,22 @@ class PostProcessing:
             batch = recording_batches[i].copy()
             bathc_power = np.max(np.abs(batch))
 
-            fft = np.fft.fftshift(np.fft.fft(batch))
+            # fft = np.fft.fftshift(np.fft.fft(batch))
 
-            # Compute energy in the band of interest (-300kHz to 300kHz)
-            energy_band = np.sum(np.abs(fft[lower_bound:upper_bound])**2)
+            # # Compute energy in the band of interest (-300kHz to 300kHz)
+            # energy_band = np.sum(np.abs(fft[lower_bound:upper_bound])**2)
 
-            # Compute energy in the rest of the band
-            energy_rest = np.sum(np.abs(fft)**2) - energy_band
+            # # Compute energy in the rest of the band
+            # energy_rest = np.sum(np.abs(fft)**2) - energy_band
 
-            # Compare energies
-            energy_ratio =  energy_band / energy_rest
+            # # Compare energies
+            # energy_ratio =  energy_band / energy_rest
 
 
 
             if State == 0: # Wait for the rising edge of the begining burst
                 # check if we received a burst
-                if  energy_ratio > 5:
+                if  bathc_power > threshold:
                     State = 1
                     res.extend(batch)
                 else:
@@ -441,7 +441,7 @@ class PostProcessing:
         for k, g in groupby(enumerate(test_list[0]), lambda ix: ix[0]-ix[1]):
             temp = list(map(itemgetter(1), g))
             if len(temp)< self.conf.MIN_FRAME_SIZE//1.3 or len(temp) > self.conf.MIN_FRAME_SIZE*2:
-                # print(f"here {len(temp)}, minimum size is {self.conf.MIN_FRAME_SIZE} and  maximum is {self.conf.MIN_FRAME_SIZE*8}")
+                print(f"here {len(temp)}, minimum size is {self.conf.MIN_FRAME_SIZE} and  maximum is {self.conf.MIN_FRAME_SIZE*8}")
                 continue 
             frames[cnt] = np.array(res[temp[0]:  temp[-1]])
             cnt += 1

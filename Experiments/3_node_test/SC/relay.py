@@ -5,7 +5,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../../../'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
 
 import src
-from  MAC import MAC_SC_RX, MAC_TX
+from  MAC import MAC_RX_SC, MAC_TX_SC
 
 
 conf = src.CONFIG()
@@ -22,7 +22,7 @@ if conf.MQTT is None:
 
 while True:
     phase = 1
-    rx = MAC_SC_RX(ROLE=ROLE, conf=conf)
+    rx = MAC_RX_SC(ROLE=ROLE, conf=conf)
 
     file = rx.record(phase=phase)
     if not file:
@@ -31,8 +31,9 @@ while True:
 
     rx.process_all_frames(file=file, phase=phase)
     rx = None
+
     phase = 2
-    tx = MAC_TX(ROLE=ROLE, conf=conf, SC=True)
+    tx = MAC_TX_SC(ROLE=ROLE, conf=conf)
 
     if not tx.transmit(repeat = 10):
         print(f"failed synchronization {ROLE}, phase_{phase}")

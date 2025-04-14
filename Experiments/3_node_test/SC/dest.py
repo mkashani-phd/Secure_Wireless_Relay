@@ -6,7 +6,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
 
 import src
 
-from  MAC import MAC_SC_RX
+from  MAC import MAC_RX_SC
 
 
 conf = src.CONFIG()
@@ -23,7 +23,7 @@ if conf.MQTT is None:
 
 while True:
     phase = 1
-    rx = MAC_SC_RX(ROLE=ROLE, conf=conf)
+    rx = MAC_RX_SC(ROLE=ROLE, conf=conf)
 
     file = rx.record(phase=phase)
     if not file:
