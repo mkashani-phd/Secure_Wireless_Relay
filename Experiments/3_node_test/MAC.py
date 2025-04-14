@@ -43,7 +43,7 @@ class MAC_TX(MAC):
         if self.SC:
             self.encoded_MAC = cc.encode_LDPC(MAC_bits, 2048)
             self.payload = self.payload[:len(self.encoded_MAC)]
-            MAC_bits = utils.hex_to_bits(hmac.new(conf.MAC_KEY.encode(), self.payload.encode(), 'sha256').hexdigest())
+            MAC_bits = utils.hex_to_bits(hmac.new(conf.MAC_KEY.encode(), utils.bits_to_string(self.payload).encode(), 'sha256').hexdigest())
             self.encoded_MAC = cc.encode_LDPC(MAC_bits, 2048)
 
             self.fsk_signal = self.tx.fsk_modulate(self.payload, # sends with half the power,
