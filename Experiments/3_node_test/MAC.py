@@ -128,7 +128,7 @@ class MAC_RX(MAC):
 
 
     def process_all_frames(self, file, phase:int = 1):
-        self.pp = src.PostProcessing(file=file, conf=self.conf, demod=self.demod, role=self.ROLE, plot=False)
+        self.pp = src.PostProcessing(file=file, conf=self.conf, demod=self.demod, role=self.ROLE, plot=True)
         if self.pp.check():
             print("Recording is correct")
             # with ProcessPoolExecutor() as executor:
@@ -224,14 +224,17 @@ class MAC_SC_RX(MAC_RX):
                     'SNR': snr_mean,
                     'message': message_str,
                     'time': time.time(),
-                    'config': copy.deepcopy(self.conf.config),
-                    'r0': list(rs[0]),
-                    'r1': list(rs[1]),
-                    'r_half': list(rs[2]),
+                    'r0': list(map(float, rs[0])),
+                    'r1': list(map(float, rs[1])),
+                    'r_half': list(map(float, rs[2])),
                     'decoded_phase_2': False
                 }
 
 
+                print(f"[Frame {i}] Message: {message_str}")
+                print(f"[Frame {i}] SNR: {snr_mean}")
+                collection.insert_one(insert)
+                return
 
             elif phase == 2:
                 collection_phase1 = mydb[f'{self.ROLE}, phase_1']
@@ -248,13 +251,14 @@ class MAC_SC_RX(MAC_RX):
 
                 Successive_Cancellation_llr = self.demod.successive_cancellation(msg_hard_decision, rs)
 
-                try:
-                    mac = cc.decode_LDPC(Successive_Cancellation_llr, message_length=256)
-                    mac_hex = utils.bits_to_hex(mac)
-                except:
-                    insert = {'error': 'ldpc decoding failed!'}
-                    collection.insert_one(insert)
-                    return
+                # try:
+                mac = cc.decode_LDPC(Successive_Cancellation_llr, message_length=256)
+                mac_hex = utils.bits_to_hex(mac)
+                # except:
+                    # insert = {'error': 'ldpc decoding failed!'}
+                    # print(f"[Frame {i}] Error: ldpc decoding failed!")
+                    # collection.insert_one(insert)
+                    # return
 
                 if mac is not None:
                     expected_mac = hmac.new(
@@ -279,9 +283,10 @@ class MAC_SC_RX(MAC_RX):
                     print(f"[Frame {i}] Integrity: \033[92mGood\033[0m" if expected_mac == mac_hex else f"\033[91mBad\033[0m")
                     print(f"[Frame {i}] SNR: {snr_mean}")
 
+                    collection.insert_one(insert)
+                    return
 
-
-        collection.insert_one(insert)
+        
 
 
 

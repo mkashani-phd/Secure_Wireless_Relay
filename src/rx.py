@@ -245,7 +245,7 @@ class Demodulation:
     def successive_cancellation(self, msg_decoded_bits,  rs):
         r0,r1,r_half = rs
         SC_llr = []
-        for i in range(0,1):            
+        for i in range(len(msg_decoded_bits)):            
             if msg_decoded_bits[i] == 0:                
 
                 if r1[i] > self.conf.ALPHA * r0[i]:
@@ -420,7 +420,8 @@ class PostProcessing:
         test_list = np.where(~np.isnan(res))
         for k, g in groupby(enumerate(test_list[0]), lambda ix: ix[0]-ix[1]):
             temp = list(map(itemgetter(1), g))
-            if len(temp)< self.conf.MIN_FRAME_SIZE or len(temp) > self.conf.MIN_FRAME_SIZE*8:
+            if len(temp)< self.conf.MIN_FRAME_SIZE//1.3 or len(temp) > self.conf.MIN_FRAME_SIZE*2:
+                # print(f"here {len(temp)}, minimum size is {self.conf.MIN_FRAME_SIZE} and  maximum is {self.conf.MIN_FRAME_SIZE*8}")
                 continue 
             frames[cnt] = np.array(res[temp[0]:  temp[-1]])
             cnt += 1

@@ -15,10 +15,10 @@ def create_LDPC(message_len:int, Codeword_length:int):
 
 
     bg, zc, kb = select_ldpc_and_Zc(K, N)
-    print(f"Selected Base Graph: BG{bg}, Selected Zc: {zc}")
+    # print(f"Selected Base Graph: BG{bg}, Selected Zc: {zc}")
 
     file_path = find_base_matrix_file(f"BG{bg}", zc)
-    print(f"Base matrix file found at: {file_path}")
+    # print(f"Base matrix file found at: {file_path}")
 
     base_graph = load_base_matrix_from_text(file_path)
     if base_graph is None:
@@ -26,11 +26,11 @@ def create_LDPC(message_len:int, Codeword_length:int):
 
 
     mb, nb = base_graph.shape
-    print(f"mb: {mb}, nb: {nb}")
+    #print(f"mb: {mb}, nb: {nb}")
 
 
     H = expand_base_graph(base_graph=base_graph, Zc=zc)
-    print(f"Actual K:{zc*kb}, Actual N:{H.shape[1]}")
+    # print(f"Actual K:{zc*kb}, Actual N:{H.shape[1]}")
     file_name = os.path.join(os.path.dirname(__file__), "__cache__", f'zc = {zc}, kb = {kb}, K_ldpc = {zc*kb}, N_ldpc = {H.shape[1]}, K  = {K}, N = {N}.bg')
     try:
         ldpc.write_ldpc_params(np.array(H, dtype=np.int8), file_name)
@@ -40,6 +40,8 @@ def create_LDPC(message_len:int, Codeword_length:int):
 
 def parse_filename(filename:str):
     #f'zc = {zc}, kb = {kb}, K_ldpc = {zc*kb}, N_ldpc = {H.shape[1]}, K  = {K}, N = {N}.bg'
+    if filename is None:
+        raise Exception("Filename is None for parsing")
     res = {}
     res['zc'] = int(re.search(r'zc = (\d+)', filename).group(1))
     res['kb'] = int(re.search(r'kb = (\d+)', filename).group(1))
@@ -58,7 +60,6 @@ def find_LDPC(serch:dict):
                 files.append(os.path.join(cache_folder, file))
 
     for file in files:
-        print(file)
         filename_paresed = parse_filename(file)
         if all([filename_paresed[key] == value for key, value in serch.items()]):
             return file
@@ -282,7 +283,7 @@ def find_base_matrix_file(bg, zc, folder_path="base_matrices"):
     """
     # give the realtive address of the search folder path
     folder_path = os.path.join(os.path.dirname(__file__), folder_path)
-    print(folder_path)
+    #print(folder_path)
 
     # Convert BG to the expected number in filename (BG1 -> 1, BG2 -> 2)
     bg_num = 1 if bg == "BG1" else 2

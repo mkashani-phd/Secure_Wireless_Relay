@@ -106,7 +106,7 @@ class CONFIG:
         config = {}
 
         ########### APPLICATION LAYER PARAMETERS ############
-        PAYLOAD = "This message is the default payload for the tests, and is 1088 bits long. It will be superposed with MAC tag of 256 bits with Rate= 1/3?This message is the default payload for the tests, and is 1088 bits long. It will be superposed with MAC tag of 256 bits with Rate= 1/3?This message is the default payload for the tests, and is 1088 bits long. It will be superposed with MAC tag of 256 bits with Rate= 1/3?"
+        PAYLOAD = "This message is the default payload for the tests, and is 1088 bits long. It will be superposed with MAC tag of 256 bits with Rate= 1/3?This message is the default payload for the tests, and is 1088 bits long. It will be superposed with MAC tag of 256 bits with Rate= 1/3?This message i"
         PREAMBLE_REPEAT = 10
         PREAMBLE =  [1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1]
         POSTAMBLE =  [0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0]
