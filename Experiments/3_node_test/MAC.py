@@ -162,11 +162,11 @@ class MAC_RX(MAC):
         self.pp = src.PostProcessing(file=file, conf=self.conf, demod=self.demod, role=self.ROLE, plot=False)
         if self.pp.check():
             print("Recording is correct")
-            with ProcessPoolExecutor() as executor:
-                executor.map(self.process_frame, range(len(self.pp.Frames)), [phase]*len(self.pp.Frames))
+            # with ProcessPoolExecutor() as executor:
+            #     executor.map(self.process_frame, range(len(self.pp.Frames)), [phase]*len(self.pp.Frames))
         
-            # for i in range(len(self.pp.Frames)):
-            #     self.process_frame(i, phase)
+            for i in range(len(self.pp.Frames)):
+                self.process_frame(i, phase)
 
 
 
