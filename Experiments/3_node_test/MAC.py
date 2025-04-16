@@ -4,6 +4,8 @@ import pymongo.collection
 import matplotlib.pyplot as plt
 import numpy as np
 import hmac
+
+import concurrent.futures
 from concurrent.futures import ProcessPoolExecutor
 
 
@@ -14,7 +16,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
 import src
 import src.utils as utils
 import src.channelCoding as cc
-
+from typing import Optional
 
 
 
@@ -22,36 +24,37 @@ import src.channelCoding as cc
 
 
 class MAC():
-    def __init__(self, ROLE:str, conf:src.CONFIG = src.CONFIG()):
+    def __init__(self, ROLE:str, conf: Optional[src.CONFIG] = None):
         self.ROLE = ROLE
-        self.conf = conf
+        self.conf = src.CONFIG() if conf is None else conf
+    def reload_config(self):
+        self.conf = src.CONFIG()
 
 
 
 class MAC_TX(MAC):
-    def __init__(self, ROLE:str, conf:src.CONFIG = src.CONFIG()):
+    def __init__(self, ROLE:str, conf: Optional[src.CONFIG] = None):
         super().__init__(ROLE, conf)
-        self.payload = utils.string_to_bits(conf.PAYLOAD)
-        self.MAC_bits = utils.hex_to_bits(hmac.new(conf.MAC_KEY.encode(), conf.PAYLOAD.encode(), 'sha256').hexdigest())
-        self.tx = src.TX(role=ROLE, conf=conf)
+        self.payload = utils.string_to_bits(self.conf.PAYLOAD)
+        self.MAC_bits = utils.hex_to_bits(hmac.new(self.conf.MAC_KEY.encode(), self.conf.PAYLOAD.encode(), 'sha256').hexdigest())
+        self.tx = src.TX(role=ROLE, conf=self.conf)
 
         self.fsk_signal = None
 
-    def transmit(self, repeat:int = 10):
+    def transmit(self):
         phase = 1 if self.ROLE == "source" else 2
         if src.MQTT_TX(conf=self.conf, role=self.ROLE, phase=phase, verbose=1).wait_for_all_ready(sleep_time=1):
-            for i in range(repeat):
+            for i in range(self.conf.TX_REPEAT):
                 self.tx.send_waveform(self.fsk_signal)
                 time.sleep(0.1)
             return True
-        
         else:
             print("failed synchronization")
             return False
 
 
 class MAC_TX_1D(MAC_TX):
-    def __init__(self, ROLE:str, conf:src.CONFIG = src.CONFIG()):
+    def __init__(self, ROLE:str, conf: Optional[src.CONFIG] = None):
         super().__init__(ROLE, conf)
         if ROLE != "source":
             raise ValueError("ROLE must be source for MAC_TX_1D")
@@ -60,19 +63,15 @@ class MAC_TX_1D(MAC_TX):
                 # mac = self.encoded_MAC,
                 # alpha = self.conf.ALPHA,
                 sps = self.conf.TX_SPS, 
-                preamble = np.concatenate([ [0 for _ in range(1000//conf.TX_SPS)] , conf.PREAMBLE]), 
-                postamble = np.concatenate([conf.POSTAMBLE, [0 for _ in range(1000//conf.TX_SPS)]]),
+                preamble = np.concatenate([ [0 for _ in range(1000//self.conf.TX_SPS)] , self.conf.PREAMBLE]), 
+                postamble = np.concatenate([self.conf.POSTAMBLE, [0 for _ in range(1000//self.conf.TX_SPS)]]),
                 scale = conf.TX_PAYLOAD_POWER_SCALE, # send the payload with half the power of the preamble
                 )
         
 
 class MAC_TX_SC(MAC_TX):
-    def __init__(self, ROLE:str, conf:src.CONFIG = src.CONFIG()):
+    def __init__(self, ROLE:str, conf: Optional[src.CONFIG] = None):
         super().__init__(ROLE, conf)
-
-  
-
-
 
 
         if ROLE == "source":
@@ -82,42 +81,29 @@ class MAC_TX_SC(MAC_TX):
                     mac = self.encoded_MAC,
                     alpha = self.conf.ALPHA,
                     sps = self.conf.TX_SPS, 
-                    preamble = np.concatenate([ [0 for _ in range(1000//conf.TX_SPS)] , conf.PREAMBLE]), 
-                    postamble = np.concatenate([ conf.POSTAMBLE, [0 for _ in range(1000//conf.TX_SPS)]]),
-                    scale = conf.TX_PAYLOAD_POWER_SCALE, # send the payload with half the power of the preamble
+                    preamble = np.concatenate([ [0 for _ in range(1000//self.conf.TX_SPS)] , self.conf.PREAMBLE]), 
+                    postamble = np.concatenate([ self.conf.POSTAMBLE, [0 for _ in range(1000//self.conf.TX_SPS)]]),
+                    scale = self.conf.TX_PAYLOAD_POWER_SCALE, # send the payload with half the power of the preamble
                     )
         else:
             self.fsk_signal = self.tx.fsk_modulate(self.payload, # sends with half the power,
                     # mac = self.encoded_MAC,
                     # alpha = self.conf.ALPHA,
                     sps = self.conf.TX_SPS, 
-                    preamble = np.concatenate([ [0 for _ in range(1000//conf.TX_SPS)] , conf.PREAMBLE]), 
-                    postamble = np.concatenate([conf.POSTAMBLE, [0 for _ in range(1000//conf.TX_SPS)]]),
-                    scale = conf.TX_PAYLOAD_POWER_SCALE, # send the payload with half the power of the preamble
+                    preamble = np.concatenate([ [0 for _ in range(1000//self.conf.TX_SPS)] , self.conf.PREAMBLE]), 
+                    postamble = np.concatenate([self.conf.POSTAMBLE, [0 for _ in range(1000//self.conf.TX_SPS)]]),
+                    scale = self.conf.TX_PAYLOAD_POWER_SCALE, # send the payload with half the power of the preamble
                     )
         
 
-    def transmit(self, repeat:int = 10):
-        phase = 1 if self.ROLE == "source" else 2
-        if src.MQTT_TX(conf=self.conf, role=self.ROLE, phase=phase, verbose=1).wait_for_all_ready(sleep_time=1):
-            for i in range(repeat):
-                self.tx.send_waveform(self.fsk_signal)
-                time.sleep(0.1)
-            return True
-        
-        else:
-            print("failed synchronization")
-            return False
 
 
 
 class MAC_RX(MAC):
-    def __init__(self, ROLE:str, conf:src.CONFIG = src.CONFIG()):
+    def __init__(self, ROLE:str, conf: Optional[src.CONFIG] = None):
         super().__init__(ROLE, conf)
-        self.ROLE = ROLE
-        self.conf = conf
-        self.demod = src.rx.Demodulation(conf=conf)
-        self.rx = src.RX(role=ROLE, conf=conf)
+        self.demod = src.rx.Demodulation(conf=self.conf)
+        self.rx = src.RX(role=ROLE, conf=self.conf)
         self.pp = None
 
     def record(self, phase:int = 1):
@@ -163,10 +149,12 @@ class MAC_RX(MAC):
         if self.pp.check():
             print("Recording is correct")
             # with ProcessPoolExecutor() as executor:
-            #     executor.map(self.process_frame, range(len(self.pp.Frames)), [phase]*len(self.pp.Frames))
+            #     executor.map(lambda args: self.process_frame(*args), zip(range(len(self.pp.Frames)), [phase]*len(self.pp.Frames)))
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                executor.map(lambda args: self.process_frame(*args), zip(range(len(self.pp.Frames)), [phase]*len(self.pp.Frames)))
         
-            for i in range(len(self.pp.Frames)):
-                self.process_frame(i, phase)
+            # for i in range(len(self.pp.Frames)):
+            #     self.process_frame(i, phase)
 
 
 
@@ -174,7 +162,7 @@ class MAC_RX(MAC):
 class MAC_RX_1D(MAC_RX):
 
 
-    def __init__(self, ROLE:str, conf:src.CONFIG = src.CONFIG()):
+    def __init__(self, ROLE:str, conf: Optional[src.CONFIG] = None):
         super().__init__(ROLE, conf)
 
 
@@ -220,7 +208,7 @@ class MAC_RX_1D(MAC_RX):
         collection.insert_one(insert)
 
 class MAC_RX_SC(MAC_RX):
-    def __init__(self, ROLE:str, conf:src.CONFIG = src.CONFIG()):
+    def __init__(self, ROLE:str, conf: Optional[src.CONFIG] = None):
         super().__init__(ROLE, conf)
 
 
@@ -259,7 +247,8 @@ class MAC_RX_SC(MAC_RX):
                     'r0': list(map(float, rs[0])),
                     'r1': list(map(float, rs[1])),
                     'r_half': list(map(float, rs[2])),
-                    'decoded_phase_2': False
+                    'decoded_phase_2': False,
+                    'config': copy.deepcopy(self.conf.config)
                 }
 
 

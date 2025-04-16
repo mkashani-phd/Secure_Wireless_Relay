@@ -46,6 +46,9 @@ class CONFIG:
         self.DESTINATION = self.config['DESTINATION']
         self.RELAY = self.config['RELAY']
 
+        self.TX_REPEAT = self.config['TX_REPEAT']
+        self.RX_MAX_MAGNITUDE_THRESHOLD_SCALE = self.config['RX_MAX_MAGNITUDE_THRESHOLD_SCALE']
+
         self.MAC_KEY = self.config['MAC_KEY']
 
         self.FREQ = self.config['FREQ']
@@ -122,9 +125,12 @@ class CONFIG:
         config['SUPERPOSED'] = False
         ############## PHY LAYER PARAMETERS #################
         config['ACQ_TIME'] = 4.0
+        config['TX_REPEAT'] = 10
+        config['RX_MAX_MAGNITUDE_THRESHOLD_SCALE'] = 0.5
+        
 
         
-        config['ALPHA'] = 0.2
+        config['ALPHA'] = 0.1
 
 
         config['MAC_KEY'] = "key"
@@ -139,8 +145,8 @@ class CONFIG:
 
         ########## USRP PARAMETERS ######################
         config['SOURCE'] = "8000169"
-        config['TX_GAIN'] = 60 
-        config['TX_PAYLOAD_POWER_SCALE'] = 0.01
+        config['TX_GAIN'] = 50 
+        config['TX_PAYLOAD_POWER_SCALE'] = 0.006
 
         config['DESTINATION'] = "8000182"
         config['RX_GAIN'] = 30.0 
@@ -161,7 +167,7 @@ class CONFIG:
         config['_minSize'] = 1e3
         config['_maxSize'] = 99.99e6
         config['_minFrames'] = 1
-        config['_maxFrames'] = 40
+        config['_maxFrames'] = 60
 
         return config
 

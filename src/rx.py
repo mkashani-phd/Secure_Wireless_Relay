@@ -118,8 +118,8 @@ class RX:
 
 
 class Demodulation:
-    def __init__(self, conf:config.CONFIG = config.CONFIG()):
-        self.conf = conf
+    def __init__(self, conf = None):
+        self.conf =  config.CONFIG() if conf is None else conf
         self.fltr = scipy.signal.butter(30, self.conf.LPF_CUTOFF, 'low', analog=False, output='sos',fs=self.conf.RX_RATE)
 
 
@@ -136,38 +136,31 @@ class Demodulation:
         return 0 if peak < threshold else 1
     
     def find_best_offset(self, signal, symbol_length, tone_bins):
-        
-        # signal  = signal[0:int(len(self.conf.PREAMBLE)*self.conf.TX_SPS*self.conf.RX_RATE//self.conf.TX_RATE)]
-        best_offset = 0
-        best_energy = -np.inf
-        energies = []
-        
-        # Try different offsets in the range [0, max_offset)
-        for offset in range(self.conf.WINDOW*2):
-            # Compute how many complete symbols we have given the offset.
-            n_symbols = (len(signal) - offset) // symbol_length
+        # Trim signal to relevant portion
+        signal = signal[4 * symbol_length : len(self.conf.PREAMBLE) * symbol_length]
+        max_offset = self.conf.WINDOW * 2
+        energies = np.zeros(max_offset)
+
+        signal_len = len(signal)
+
+        for offset in range(max_offset):
+            # Calculate number of full symbols we can extract from the current offset
+            n_symbols = (signal_len - offset) // symbol_length
             if n_symbols <= 0:
-                energies.append(0)
                 continue
             
-            # Extract symbols using the candidate offset.
-            symbols = signal[offset : offset + n_symbols * symbol_length].reshape(n_symbols, symbol_length)
+            # View of signal reshaped as symbols, starting at this offset
+            chunk = signal[offset : offset + n_symbols * symbol_length]
+            symbols = chunk.reshape(n_symbols, symbol_length)
             
-            # Compute the FFT for each symbol.
+            # FFT and energy calculation for FSK tone bins
             fft_symbols = np.fft.fft(symbols, axis=1)
-            
-            # For each symbol, sum the energy in the bins corresponding to the FSK tones.
-            # We use np.abs()**2 to get the energy.
             symbol_energies = np.sum(np.abs(fft_symbols[:, tone_bins])**2, axis=1)
-            avg_energy = np.mean(symbol_energies)
-            energies.append(avg_energy)
-            
-            # Keep track of the offset with the maximum average energy.
-            if avg_energy > best_energy:
-                best_energy = avg_energy
-                best_offset = offset
-        
+            energies[offset] = np.mean(symbol_energies)
+
+        best_offset = np.argmax(energies)
         return best_offset
+
     
 
     
@@ -184,8 +177,6 @@ class Demodulation:
 
         n_symbols = (len(signal) - offset) // symbol_length
         symbols = signal[offset:n_symbols * symbol_length + offset]
-        # frame = self.butter(frame)
-        # Compute hard decision
         hard_decision = []
         for i in range(0, len(symbols), symbol_length):
             peak, fft_peak = self.fft_max_peak(self.butter(symbols[i:i + symbol_length]), symbol_length)
@@ -242,24 +233,34 @@ class Demodulation:
 
         return hard_decision, [r0, r1, r_half], SNR
 
+    def successive_cancellation(self, msg_decoded_bits, rs):
+        r0, r1, r_half = rs
+        alpha = self.conf.ALPHA
 
-    def successive_cancellation(self, msg_decoded_bits,  rs):
-        r0,r1,r_half = rs
-        SC_llr = []
-        print(f"len message: {len(msg_decoded_bits)}, len rs: {len(r0)}")
-        for i in range(len(msg_decoded_bits)):            
-            if msg_decoded_bits[i] == 0:                
+        msg_decoded_bits = np.asarray(msg_decoded_bits)
+        r0 = np.asarray(r0)
+        r1 = np.asarray(r1)
+        r_half = np.asarray(r_half)
 
-                if r1[i] > self.conf.ALPHA * r0[i]:
-                    SC_llr.append(np.log(r_half[i]/r1[i] ))
-                else:
-                    SC_llr.append(np.log(r0[i]/(self.conf.ALPHA * r1[i]) ))
-            else:
-                if r0[i] > self.conf.ALPHA * r1[i]:
-                    SC_llr.append(np.log(r0[i]/r_half[i]))
-                else:
-                    SC_llr.append(np.log((self.conf.ALPHA * r0[i])/r1[i]))
-        
+        # Allocate result array
+        SC_llr = np.empty_like(r0)
+
+        # Bit = 0 cases
+        bit0_mask = (msg_decoded_bits == 0)
+        cond0 = r1 > alpha*.9 * r0
+        cond0 &= bit0_mask
+        cond1 = bit0_mask & ~cond0
+        SC_llr[cond0] = np.log(r_half[cond0] / r1[cond0])
+        SC_llr[cond1] = np.log(r0[cond1] / (alpha * r1[cond1]))
+
+        # Bit = 1 cases
+        bit1_mask = ~bit0_mask
+        cond2 = r0 > alpha*.9 * r1
+        cond2 &= bit1_mask
+        cond3 = bit1_mask & ~cond2
+        SC_llr[cond2] = np.log(r0[cond2] / r_half[cond2])
+        SC_llr[cond3] = np.log((alpha * r0[cond3]) / r1[cond3])
+
         return SC_llr
 
     def binary_list_to_hex(self, binary_list):
@@ -376,7 +377,7 @@ class PostProcessing:
 
         res = []
         State = 0
-        threshold = (np.max(np.abs(self.IQsamples))) *.5
+        threshold = (np.max(np.abs(self.IQsamples))) * self.conf.RX_MAX_MAGNITUDE_THRESHOLD_SCALE
 
         for i in range(recording_batches.shape[0]):
             # process the batch

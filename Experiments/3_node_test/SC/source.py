@@ -1,33 +1,34 @@
-ROLE = "source"
-import os
-import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), '../../../'))
-sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
-
-import src
-from  MAC import MAC_TX_SC
+try:
+    while True:
+        try:
 
 
-conf = src.CONFIG()
+            ROLE = "source"
+            import os
+            import sys
+            sys.path.append(os.path.join(os.path.dirname(__file__), '../../../'))
+            sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
 
-if conf.connectionString is None:
-    print("No connection string provided")
-    exit(1)
-
-if conf.MQTT is None:
-    print("No MQTT broker provided")
-    exit(1)
+            from  MAC import MAC_TX_SC
 
 
+            while True:
+                phase = 1
+                tx = MAC_TX_SC(ROLE=ROLE)    
+                if tx.transmit():
+                    print(f"transmission {ROLE}, phase_{phase} done")
+                else:
+                    print(f"failed synchronization {ROLE}, phase_{phase}")
+                    continue
+                tx = None
 
-while True:
-    phase = 1
-    tx = MAC_TX_SC(ROLE=ROLE, conf=conf, SC=True)
-    if tx.transmit(repeat = 10):
-        print(f"transmission {ROLE}, phase_{phase} done")
-    else:
-        print(f"failed synchronization {ROLE}, phase_{phase}")
-        continue
+
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            continue
+except KeyboardInterrupt:
+    print("\nInterrupted by user. Exiting gracefully...")
+
 
 
 
