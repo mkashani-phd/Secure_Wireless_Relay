@@ -31,7 +31,7 @@ def create_LDPC(message_len:int, Codeword_length:int):
 
     H = expand_base_graph(base_graph=base_graph, Zc=zc)
     # print(f"Actual K:{zc*kb}, Actual N:{H.shape[1]}")
-    file_name = os.path.join(os.path.dirname(__file__), "__cache__", f'zc = {zc}, kb = {kb}, K_ldpc = {zc*kb}, N_ldpc = {H.shape[1]}, K  = {K}, N = {N}.bg')
+    file_name = os.path.relpath(os.path.join(os.path.dirname(__file__), "__cache__", f'zc = {zc}, kb = {kb}, K_ldpc = {zc*kb}, N_ldpc = {H.shape[1]}, K  = {K}, N = {N}.bg'))
     try:
         ldpc.write_ldpc_params(np.array(H, dtype=np.int8), file_name)
     except:
@@ -53,7 +53,8 @@ def parse_filename(filename:str):
 
 def find_LDPC(serch:dict):
     files = []
-    cache_folder = os.path.join(os.path.dirname(__file__), "__cache__")
+    cache_folder = os.path.relpath(os.path.join(os.path.dirname(__file__), "__cache__"))
+    
     if os.path.exists(cache_folder):
         for file in os.listdir(cache_folder):
             if file.endswith('.bg'):
