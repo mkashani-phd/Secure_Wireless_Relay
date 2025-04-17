@@ -150,6 +150,8 @@ class MAC_RX(MAC):
             print("Recording is correct")
             # with ProcessPoolExecutor() as executor:
             #     executor.map(lambda args: self.process_frame(*args), zip(range(len(self.pp.Frames)), [phase]*len(self.pp.Frames)))
+            
+            
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 executor.map(lambda args: self.process_frame(*args), zip(range(len(self.pp.Frames)), [phase]*len(self.pp.Frames)))
         
@@ -214,17 +216,18 @@ class MAC_RX_SC(MAC_RX):
 
 
     def process_frame(self, i, phase:int = 1):
-
         myclient = pymongo.MongoClient(self.conf.connectionString)
         mydb = myclient["MAC_SC"]
         collection=mydb[f'{self.ROLE}, phase_{phase}']
-        try:
-            msg_hard_decision, snr_mean, rs = self.primary_process(i)
-        except:
-            return None
-        message_str = utils.bits_to_string(msg_hard_decision)
 
         if self.ROLE == "relay":
+            try:
+                msg_hard_decision, snr_mean, rs = self.primary_process(i)
+            except:
+                return None
+            message_str = utils.bits_to_string(msg_hard_decision)
+
+
             print(f"[Frame {i}] Message: {message_str}")
             print(f"[Frame {i}] SNR: {snr_mean}")
 
@@ -239,6 +242,11 @@ class MAC_RX_SC(MAC_RX):
         
         else:
             if phase == 1:
+                try:
+                    msg_hard_decision, snr_mean, rs = self.primary_process(i)
+                except:
+                    return None
+                message_str = utils.bits_to_string(msg_hard_decision)
 
                 insert = {
                     'SNR': snr_mean,
@@ -258,16 +266,28 @@ class MAC_RX_SC(MAC_RX):
                 return
 
             elif phase == 2:
+
                 collection_phase1 = mydb[f'{self.ROLE}, phase_1']
-                doc = collection_phase1.find_one(
+                doc = collection_phase1.find_one_and_update(
                                                     {'decoded_phase_2': False},
+                                                    {'$set': {'decoded_phase_2': True}},
                                                     sort=[('_id', -1)]  # Sort by _id descending (latest first)
                                                 )
 
                 if doc is None:
                     insert = {'error': 'No phase 1 document found!'}
+                    print(f"[Frame {i}] \033[91mError\033[0m: No phase 1 document found!")
                     collection.insert_one(insert)
                     return
+                
+
+                mydb = myclient["MAC_SC"]
+                collection=mydb[f'{self.ROLE}, phase_{phase}']
+                try:
+                    msg_hard_decision, snr_mean, rs = self.primary_process(i)
+                except:
+                    return None
+                message_str = utils.bits_to_string(msg_hard_decision)
                 
                 rs = [doc['r0'], doc['r1'], doc['r_half']]
                 doc['decoded_phase_2'] = True
@@ -276,7 +296,7 @@ class MAC_RX_SC(MAC_RX):
                     Successive_Cancellation_llr = self.demod.successive_cancellation(msg_hard_decision, rs)
                 except:
                     insert = {'error': 'successive cancellation failed!'}
-                    print(f"[Frame {i}] Error: successive cancellation failed!")
+                    print(f"[Frame {i}] \033[91mError\033[0m: successive cancellation failed!")
                     collection.insert_one(insert)
                     return
                 try:
@@ -284,7 +304,7 @@ class MAC_RX_SC(MAC_RX):
                     mac_hex = utils.bits_to_hex(mac)
                 except:
                     insert = {'error': 'ldpc decoding failed!'}
-                    print(f"[Frame {i}] Error: ldpc decoding failed!")
+                    print(f"[Frame {i}] \033[91mError\033[0m: ldpc decoding failed!")
                     collection.insert_one(insert)
                     return
 

@@ -54,6 +54,8 @@ def parse_filename(filename:str):
 def find_LDPC(serch:dict):
     files = []
     cache_folder = os.path.relpath(os.path.join(os.path.dirname(__file__), "__cache__"))
+    if not os.path.exists(cache_folder):
+        os.makedirs(cache_folder)
     
     if os.path.exists(cache_folder):
         for file in os.listdir(cache_folder):
