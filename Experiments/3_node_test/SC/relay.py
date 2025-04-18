@@ -9,14 +9,13 @@ try:
 
             from  MAC import MAC_RX_SC, MAC_TX_SC
 
-            rx = MAC_RX_SC(ROLE=ROLE)
-            tx = MAC_TX_SC(ROLE=ROLE)
+
 
             
 
             while True:
                 phase = 1
-                
+                rx = MAC_RX_SC(ROLE=ROLE)
 
                 file = rx.record(phase=phase)
                 if not file:
@@ -26,7 +25,8 @@ try:
                 rx.process_all_frames(file=file, phase=phase)
                 rx = None
 
-                phase = 2
+                phase = 2            
+                tx = MAC_TX_SC(ROLE=ROLE)
 
                 if not tx.transmit():
                     print(f"failed synchronization {ROLE}, phase_{phase}")

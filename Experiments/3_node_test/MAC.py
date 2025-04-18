@@ -56,16 +56,14 @@ class MAC_TX(MAC):
 class MAC_TX_1D(MAC_TX):
     def __init__(self, ROLE:str, conf: Optional[src.CONFIG] = None):
         super().__init__(ROLE, conf)
-        if ROLE != "source":
-            raise ValueError("ROLE must be source for MAC_TX_1D")
-            
+
         self.fsk_signal = self.tx.fsk_modulate(np.concatenate([self.payload, self.MAC_bits]), # sends with half the power,
                 # mac = self.encoded_MAC,
                 # alpha = self.conf.ALPHA,
                 sps = self.conf.TX_SPS, 
                 preamble = np.concatenate([ [0 for _ in range(1000//self.conf.TX_SPS)] , self.conf.PREAMBLE]), 
                 postamble = np.concatenate([self.conf.POSTAMBLE, [0 for _ in range(1000//self.conf.TX_SPS)]]),
-                scale = conf.TX_PAYLOAD_POWER_SCALE, # send the payload with half the power of the preamble
+                scale = self.conf.TX_PAYLOAD_POWER_SCALE, # send the payload with half the power of the preamble
                 )
         
 
