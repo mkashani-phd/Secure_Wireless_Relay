@@ -194,7 +194,7 @@ class MAC_RX_1D(MAC_RX):
         print(f"[Frame {i}] Message: {message_str}")
         print(f"[Frame {i}] Received MAC: {mac_received}")
         print(f"[Frame {i}] Expected MAC: {mac_expected}")
-        print(f"[Frame {i}] Integrity: {'Good' if integrity else 'Bad'}")
+        print(f"[Frame {i}] Integrity: \033[92mGood\033[0m" if integrity else f"\033[91mBad\033[0m")
         print(f"[Frame {i}] SNR: {snr_mean}")
 
         insert = {
