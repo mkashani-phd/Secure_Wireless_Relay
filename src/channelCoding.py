@@ -2,6 +2,11 @@ import numpy as np
 from scipy.sparse import coo_matrix
 import matplotlib.pyplot as plt
 import commpy.channelcoding.ldpc as ldpc
+
+import numpy as np
+from sionna.phy.fec.ldpc import LDPC5GEncoder, LDPC5GDecoder
+import tensorflow as tf
+
 import os
 import re
 
@@ -22,7 +27,7 @@ def create_LDPC(message_len:int, Codeword_length:int):
 
     base_graph = load_base_matrix_from_text(file_path)
     if base_graph is None:
-        exit("Error loading base matrix file")
+        raise Exception("Error loading base matrix file")
 
 
     mb, nb = base_graph.shape
@@ -75,47 +80,78 @@ def encode_LDPC(message:list|np.ndarray, Codeword_length:int):
     #look in the path for all the .bg files and find the file that ends with  f'K  = {K}, N = {N}.bg'
     K = len(message)
     N = Codeword_length
-    ldpc_search = {'K':K, 'N':N}
-    filename = find_LDPC(ldpc_search)
-    if filename is None:
-        create_LDPC(K, N)
+
+    R = K / N
+
+    if R <= 1/5:
+
+
+        ldpc_search = {'K':K, 'N':N}
         filename = find_LDPC(ldpc_search)
-    
-    if filename is None:
-        raise Exception("No LDPC file found")
-    filename_paresed = parse_filename(filename)
-    zc = filename_paresed['zc']
-    kb = filename_paresed['kb']
+        if filename is None:
+            create_LDPC(K, N)
+            filename = find_LDPC(ldpc_search)
+        
+        if filename is None:
+            raise Exception("No LDPC file found")
+        filename_paresed = parse_filename(filename)
+        zc = filename_paresed['zc']
+        kb = filename_paresed['kb']
 
-    if len(message) != kb*zc:
-        message = np.concatenate((message, np.zeros(kb*zc - len(message))))
+        if len(message) != kb*zc:
+            message = np.concatenate((message, np.zeros(kb*zc - len(message))))
 
-    ldpc_param = ldpc.get_ldpc_code_params(ldpc_design_filename=filename, compute_matrix=True)
-    codeword = ldpc.triang_ldpc_systematic_encode(message, ldpc_param, 0)
+        ldpc_param = ldpc.get_ldpc_code_params(ldpc_design_filename=filename, compute_matrix=True)
+        codeword = ldpc.triang_ldpc_systematic_encode(message, ldpc_param, 0)
 
-    return codeword
+        return codeword
+
+    else:
+        encoder = LDPC5GEncoder(K ,N)
+        msg = tf.constant(message, dtype=tf.float32)
+        codeword = encoder.call(msg)
+
+        return codeword.numpy().flatten().tolist()
+
 
 def decode_LDPC(codeword_llr:list|np.ndarray, message_length:int):
+
+
     K = message_length
     N_ldpc = len(codeword_llr)
 
-    ldpc_search = {'K':K, 'N_ldpc':N_ldpc}
-    filename = find_LDPC(ldpc_search)
+    R = K / N_ldpc
 
-    filename_paresed = parse_filename(filename)
+    if R <= 1/5:
 
-    maximum = max(codeword_llr)
-    if K < filename_paresed['K_ldpc']:
-        codeword_llr[K:filename_paresed['K_ldpc']] = [maximum]* (filename_paresed['K_ldpc'] - K)
+        ldpc_search = {'K':K, 'N_ldpc':N_ldpc}
+        filename = find_LDPC(ldpc_search)
+
+        filename_paresed = parse_filename(filename)
+
+        maximum = max(codeword_llr)
+        if K < filename_paresed['K_ldpc']:
+            codeword_llr[K:filename_paresed['K_ldpc']] = [maximum]* (filename_paresed['K_ldpc'] - K)
 
 
 
-    ldpc_param = ldpc.get_ldpc_code_params(ldpc_design_filename=filename, compute_matrix=True)
-    
-    codeword_llr = np.array(codeword_llr)
-    message = ldpc.ldpc_bp_decode(codeword_llr, ldpc_param, decoder_algorithm='SPA', n_iters=100)
+        ldpc_param = ldpc.get_ldpc_code_params(ldpc_design_filename=filename, compute_matrix=True)
+        
+        codeword_llr = np.array(codeword_llr)
+        message = ldpc.ldpc_bp_decode(codeword_llr, ldpc_param, decoder_algorithm='SPA', n_iters=100)
 
-    return message[0][:message_length]
+        return message[0][:message_length]
+
+    else:
+        encoder = LDPC5GEncoder(K ,N_ldpc)
+        decoder = LDPC5GDecoder(encoder=encoder,num_iter=20)
+        llr = tf.constant(codeword_llr, dtype=tf.float32)
+        llr = llr*-1
+        decoded = decoder.call(llr)
+
+
+        return decoded.numpy()
+
 
 
 
@@ -268,7 +304,7 @@ def select_ldpc_and_Zc(K, N):
         if Kb * Zc >= K and nc * Zc >= N + 2*Zc:
             return BG, Zc, Kb
 
-    return BG, None  # Return None if no suitable Zc is found
+    return None, None, None  # Return None if no suitable Zc is found
 
 
 
