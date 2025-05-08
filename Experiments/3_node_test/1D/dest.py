@@ -25,15 +25,15 @@ try:
                 rx.process_all_frames(file=file, phase=phase)
                 rx = None
 
-                phase = 2
-                rx = MAC_RX_1D(ROLE=ROLE)
+                # phase = 2
+                # rx = MAC_RX_1D(ROLE=ROLE)
 
-                file = rx.record(phase=phase)
-                if not file:
-                    print(f"failed synchronization {ROLE}, phase_{phase}")
-                    continue
+                # file = rx.record(phase=phase)
+                # if not file:
+                #     print(f"failed synchronization {ROLE}, phase_{phase}")
+                #     continue
 
-                rx.process_all_frames(file=file, phase=phase)
+                # rx.process_all_frames(file=file, phase=phase)
 
 
         except Exception as e:

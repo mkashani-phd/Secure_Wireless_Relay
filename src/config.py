@@ -50,6 +50,8 @@ class CONFIG:
         self.RX_MAX_MAGNITUDE_THRESHOLD_SCALE = self.config['RX_MAX_MAGNITUDE_THRESHOLD_SCALE']
 
         self.MAC_KEY = self.config['MAC_KEY']
+        self.MSG_SIZE = self.config['MSG_SIZE']
+        self.MAC_SIZE_ENCODED = self.config['MAC_SIZE_ENCODED']
 
         self.FREQ = self.config['FREQ']
         self.TX_RATE = self.config['TX_RATE']
@@ -109,7 +111,7 @@ class CONFIG:
         config = {}
 
         ########### APPLICATION LAYER PARAMETERS ############
-        PAYLOAD = "This message is the default payload for the tests, and is 1088 bits long. It will be superposed with MAC tag of 256 bits with Rate= 1/3?This message is the default payload for the tests, and is 1088 bits long. It will be superposed with MAC tag of 256 bits with Rate= 1/3?This message i"
+        PAYLOAD = "This message is the default payload for the tests, and is 1088 bits long. It will be superposed with MAC tag of "
         PREAMBLE_REPEAT = 17
         PREAMBLE =  [1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1]
         POSTAMBLE =  [0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0]
@@ -120,8 +122,11 @@ class CONFIG:
         config['POSTAMBLE'] = POSTAMBLE
         config['PREAMBLE_REPEAT'] = PREAMBLE_REPEAT
         config['PAYLOAD'] = PAYLOAD
-        config['MSG_CODE_RATE'] = 1
-        config['MAC_CODE_RATE'] = 1/3
+        config['MSG_CODE_RATE'] = 1/2
+        config['MAC_CODE_RATE'] = 1/2
+
+        config['MSG_SIZE'] = 896
+        config['MAC_SIZE_ENCODED'] = 2304
         config['SUPERPOSED'] = False
         ############## PHY LAYER PARAMETERS #################
         config['ACQ_TIME'] = 4.0

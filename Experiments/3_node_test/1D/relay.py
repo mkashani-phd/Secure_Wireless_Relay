@@ -24,15 +24,15 @@ try:
                 rx.process_all_frames(file=file, phase=phase)
                 rx = None
 
-                phase = 2
-                tx = MAC_TX_1D(ROLE=ROLE)
+                # phase = 2
+                # tx = MAC_TX_1D(ROLE=ROLE)
                 
-                if not tx.transmit():
-                    print(f"failed synchronization {ROLE}, phase_{phase}")
-                    # continue
-                else:
-                    print(f"transmission {ROLE}, phase_{phase} done")
-                tx = None
+                # if not tx.transmit():
+                #     print(f"failed synchronization {ROLE}, phase_{phase}")
+                #     # continue
+                # else:
+                #     print(f"transmission {ROLE}, phase_{phase} done")
+                # tx = None
 
 
         except Exception as e:

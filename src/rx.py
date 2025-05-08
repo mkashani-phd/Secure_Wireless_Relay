@@ -127,13 +127,14 @@ class Demodulation:
     def butter(self,input):
         return scipy.signal.sosfilt(self.fltr, input) 
     
-    def fft_max_peak(self, frame,window):
-        fft = np.fft.fftshift(np.fft.fft(frame[:window]))
-        peak = np.argmax(np.abs(fft))
-        return peak,fft
+    def f_energy(self, frame,window):
+        fft = np.fft.fft(frame[:window])
+        f1 = np.sum(np.abs(fft[0:30])**2)
+        f0 = np.sum(np.abs(fft[170:200])**2)
+        return f0,f1
     
-    def decision(self, peak, threshold):
-        return 0 if peak < threshold else 1
+    def decision(self, f0, f1):
+        return 0 if f1 < f0 else 1
     
     def find_best_offset(self, signal, symbol_length, tone_bins):
         # Trim signal to relevant portion
@@ -179,8 +180,8 @@ class Demodulation:
         symbols = signal[offset:n_symbols * symbol_length + offset]
         hard_decision = []
         for i in range(0, len(symbols), symbol_length):
-            peak, fft_peak = self.fft_max_peak(self.butter(symbols[i:i + symbol_length]), symbol_length)
-            hard_decision.append(self.decision(peak=peak, threshold=symbol_length // 2))
+            f0, f1 = self.f_energy(self.butter(symbols[i:i + symbol_length]), symbol_length)
+            hard_decision.append(self.decision(f0, f1))
 
         # # Compute FFT and power spectrum
         # fft_symbols = np.fft.fft(symbols.reshape(n_symbols, symbol_length), axis=1)

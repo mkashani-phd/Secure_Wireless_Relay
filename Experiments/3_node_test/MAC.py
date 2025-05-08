@@ -4,6 +4,10 @@ import pymongo.collection
 import matplotlib.pyplot as plt
 import numpy as np
 import hmac
+import tensorflow as tf
+
+from tensorflow.keras import backend
+import gc
 
 import concurrent.futures
 from concurrent.futures import ProcessPoolExecutor
@@ -11,6 +15,8 @@ from concurrent.futures import ProcessPoolExecutor
 
 import sys
 import os
+
+import src.channelCoding
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
 
 import src
@@ -36,7 +42,14 @@ class MAC_TX(MAC):
     def __init__(self, ROLE:str, conf: Optional[src.CONFIG] = None):
         super().__init__(ROLE, conf)
         self.payload = utils.string_to_bits(self.conf.PAYLOAD)
+
+        if len(self.payload) < self.conf.MSG_SIZE:
+            raise ValueError(f"Payload size {len(self.payload)} is smaller than the configured MSG_SIZE {self.conf.MSG_SIZE}")
+        else:
+            self.payload = self.payload[0:self.conf.MSG_SIZE]
+        
         self.MAC_bits = utils.hex_to_bits(hmac.new(self.conf.MAC_KEY.encode(), self.conf.PAYLOAD.encode(), 'sha256').hexdigest())
+
         self.tx = src.TX(role=ROLE, conf=self.conf)
 
         self.fsk_signal = None
@@ -57,6 +70,8 @@ class MAC_TX_1D(MAC_TX):
     def __init__(self, ROLE:str, conf: Optional[src.CONFIG] = None):
         super().__init__(ROLE, conf)
 
+        self.payload = src.channelCoding.encode_LDPC(self.payload, len(self.payload)//self.conf.MSG_CODE_RATE)
+        self.MAC_bits = src.channelCoding.encode_LDPC(self.MAC_bits, len(self.MAC_bits)//self.conf.MAC_CODE_RATE)
         self.fsk_signal = self.tx.fsk_modulate(np.concatenate([self.payload, self.MAC_bits]), # sends with half the power,
                 # mac = self.encoded_MAC,
                 # alpha = self.conf.ALPHA,
@@ -73,8 +88,13 @@ class MAC_TX_SC(MAC_TX):
 
 
         if ROLE == "source":
-            self.encoded_MAC = cc.encode_LDPC(self.MAC_bits, 2048)
+            self.payload = src.channelCoding.encode_LDPC(self.payload, self.conf.MAC_SIZE_ENCODED)
+            self.encoded_MAC = src.channelCoding.encode_LDPC(self.MAC_bits, len(self.MAC_bits)*3)
+            self.encoded_MAC = src.channelCoding.encode_LDPC(self.encoded_MAC, len(self.encoded_MAC)*3)
 
+            if len(self.payload) != len(self.encoded_MAC):
+                raise ValueError(f"Payload size {len(self.payload)} is not equal to the MAC size {len(self.encoded_MAC)}")
+            
             self.fsk_signal = self.tx.fsk_modulate(self.payload, # sends with half the power,
                     mac = self.encoded_MAC,
                     alpha = self.conf.ALPHA,
@@ -84,6 +104,8 @@ class MAC_TX_SC(MAC_TX):
                     scale = self.conf.TX_PAYLOAD_POWER_SCALE, # send the payload with half the power of the preamble
                     )
         else:
+            self.payload = src.channelCoding.encode_LDPC(self.payload, self.conf.MAC_SIZE_ENCODED)
+
             self.fsk_signal = self.tx.fsk_modulate(self.payload, # sends with half the power,
                     # mac = self.encoded_MAC,
                     # alpha = self.conf.ALPHA,
@@ -150,11 +172,11 @@ class MAC_RX(MAC):
             #     executor.map(lambda args: self.process_frame(*args), zip(range(len(self.pp.Frames)), [phase]*len(self.pp.Frames)))
             
             
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                executor.map(lambda args: self.process_frame(*args), zip(range(len(self.pp.Frames)), [phase]*len(self.pp.Frames)))
+            # with concurrent.futures.ThreadPoolExecutor() as executor:
+            #     executor.map(lambda args: self.process_frame(*args), zip(range(len(self.pp.Frames)), [phase]*len(self.pp.Frames)))
         
-            # for i in range(len(self.pp.Frames)):
-            #     self.process_frame(i, phase)
+            for i in range(len(self.pp.Frames)):
+                self.process_frame(i, phase)
 
 
 
@@ -174,14 +196,25 @@ class MAC_RX_1D(MAC_RX):
             return None
 
         myclient = pymongo.MongoClient(self.conf.connectionString)
-        mydb = myclient["MAC_1D"]
+        mydb = myclient["MAC_1D_R=1_2"]
         collection=mydb[f'{self.ROLE}, phase_{phase}']
 
+        r0 ,r1, _ = rs
+        r0_msg = tf.constant(r0[:-512], dtype=tf.float32)   # shape (N,)
+        r1_msg = tf.constant(r1[:-512], dtype=tf.float32)
+        llr_msg = tf.math.log(r0_msg / r1_msg)                          
 
-        
 
-        message_str = utils.bits_to_string(msg_hard_decision[0:-256])
-        mac_received = utils.bits_to_hex(msg_hard_decision[-256:])
+        r0_mac = tf.constant(r0[-512:], dtype=tf.float32)   # shape (N,)
+        r1_mac = tf.constant(r1[-512:], dtype=tf.float32)
+        llr_mac = tf.math.log(r0_mac / r1_mac)    
+
+
+        msg_LDPC = src.channelCoding.decode_LDPC(codeword_llr=llr_msg, message_length=self.conf.MSG_SIZE)
+        mac_LDPC = src.channelCoding.decode_LDPC(codeword_llr=llr_mac, message_length=256)
+
+        message_str = utils.bits_to_string(msg_LDPC)
+        mac_received = utils.bits_to_hex(mac_LDPC)
         mac_expected = hmac.new(
             self.conf.MAC_KEY.encode('utf-8'),
             msg=message_str.encode('utf-8'),
@@ -199,13 +232,20 @@ class MAC_RX_1D(MAC_RX):
 
         insert = {
             'SNR': snr_mean,
+            'MAC_hard': utils.bits_to_hex(msg_hard_decision[-512:]),
             'MAC': mac_received,
+            'message_hard': utils.bits_to_string(msg_hard_decision[:-512]),
             'message': message_str,
             'integrity': integrity,
             'time': time.time(),
             'config': copy.deepcopy(self.conf.config)
         }
         collection.insert_one(insert)
+
+        #remove from GPU memory
+        r0_mac = r0_mac = llr_mac=  r0_msg = r1_msg = r1_mac = msg_LDPC = mac_LDPC = None
+        backend.clear_session()
+        gc.collect()
 
 class MAC_RX_SC(MAC_RX):
     def __init__(self, ROLE:str, conf: Optional[src.CONFIG] = None):
@@ -215,7 +255,7 @@ class MAC_RX_SC(MAC_RX):
 
     def process_frame(self, i, phase:int = 1):
         myclient = pymongo.MongoClient(self.conf.connectionString)
-        mydb = myclient["MAC_SC"]
+        mydb = myclient["MAC_SC_R=1_2"]
         collection=mydb[f'{self.ROLE}, phase_{phase}']
 
         if self.ROLE == "relay":
@@ -223,7 +263,16 @@ class MAC_RX_SC(MAC_RX):
                 msg_hard_decision, snr_mean, rs = self.primary_process(i)
             except:
                 return None
-            message_str = utils.bits_to_string(msg_hard_decision)
+            
+            r0 ,r1, _ = rs
+            r0_msg = tf.constant(r0, dtype=tf.float32)   # shape (N,)
+            r1_msg = tf.constant(r1, dtype=tf.float32)
+            llr_msg = tf.math.log(r0_msg / r1_msg)
+            
+
+
+            msg_LDPC = src.channelCoding.decode_LDPC(codeword_llr=llr_msg, message_length=self.conf.MSG_SIZE)
+            message_str = utils.bits_to_string(msg_LDPC)
 
 
             print(f"[Frame {i}] Message: {message_str}")
@@ -232,6 +281,7 @@ class MAC_RX_SC(MAC_RX):
             insert = {
                 'SNR': snr_mean,
                 'message': message_str,
+                'message_hard': utils.bits_to_string(msg_hard_decision),
                 'time': time.time(),
                 'config': copy.deepcopy(self.conf.config)
             }
@@ -244,7 +294,17 @@ class MAC_RX_SC(MAC_RX):
                     msg_hard_decision, snr_mean, rs = self.primary_process(i)
                 except:
                     return None
-                message_str = utils.bits_to_string(msg_hard_decision)
+                
+                r0 ,r1, _ = rs
+                r0_msg = tf.constant(r0, dtype=tf.float32)   # shape (N,)
+                r1_msg = tf.constant(r1, dtype=tf.float32)
+                llr_msg = tf.math.log(r0_msg / r1_msg)
+                
+
+
+                msg_LDPC = src.channelCoding.decode_LDPC(codeword_llr=llr_msg, message_length=self.conf.MSG_SIZE)
+                message_str = utils.bits_to_string(msg_LDPC)
+
 
                 insert = {
                     'SNR': snr_mean,
@@ -279,26 +339,39 @@ class MAC_RX_SC(MAC_RX):
                     return
                 
 
-                mydb = myclient["MAC_SC"]
+                mydb = myclient["MAC_SC_R=1_2"]
                 collection=mydb[f'{self.ROLE}, phase_{phase}']
                 try:
                     msg_hard_decision, snr_mean, rs = self.primary_process(i)
                 except:
                     return None
-                message_str = utils.bits_to_string(msg_hard_decision)
+                
+                r0 ,r1, _ = rs
+                r0_msg = tf.constant(r0, dtype=tf.float32)   # shape (N,)
+                r1_msg = tf.constant(r1, dtype=tf.float32)
+                llr_msg = tf.math.log(r0_msg / r1_msg)
+
+                msg_LDPC = src.channelCoding.decode_LDPC(codeword_llr=llr_msg, message_length=self.conf.MSG_SIZE)
+                message_str = utils.bits_to_string(msg_LDPC)
                 
                 rs = [doc['r0'], doc['r1'], doc['r_half']]
                 doc['decoded_phase_2'] = True
                 collection_phase1.update_one({'_id': doc['_id']}, {'$set': doc})
                 try:
-                    Successive_Cancellation_llr = self.demod.successive_cancellation(msg_hard_decision, rs)
+                    msg_encoded = src.channelCoding.encode_LDPC(msg_LDPC, self.conf.MAC_SIZE_ENCODED)
+                    Successive_Cancellation_llr = self.demod.successive_cancellation(msg_encoded, rs)
+                    Successive_Cancellation_llr = tf.constant(Successive_Cancellation_llr, dtype=tf.float32)
                 except:
                     insert = {'error': 'successive cancellation failed!'}
                     print(f"[Frame {i}] \033[91mError\033[0m: successive cancellation failed!")
                     collection.insert_one(insert)
                     return
                 try:
-                    mac = cc.decode_LDPC(Successive_Cancellation_llr, message_length=256)
+                    mac = src.channelCoding.decode_LDPC(Successive_Cancellation_llr, message_length=256*3)
+
+                    llr_inner = [-10 if i else 10 for i in mac]
+                    llr_inner = tf.constant(llr_inner, dtype=tf.float32)
+                    mac = src.channelCoding.decode_LDPC(llr_inner, message_length=256)
                     mac_hex = utils.bits_to_hex(mac)
                 except:
                     insert = {'error': 'ldpc decoding failed!'}
@@ -318,6 +391,7 @@ class MAC_RX_SC(MAC_RX):
                         'SNR': snr_mean,
                         'MAC': mac_hex,
                         'message': message_str,
+                        'message_hard': utils.bits_to_string(msg_hard_decision),
                         'integrity': expected_mac == mac_hex,
                         'time': time.time(),
                         'config': copy.deepcopy(self.conf.config),
@@ -327,7 +401,7 @@ class MAC_RX_SC(MAC_RX):
                     print(f"[Frame {i}] Received MAC: {mac_hex}")
                     print(f"[Frame {i}] Expected MAC: {expected_mac}")
                     print(f"[Frame {i}] Integrity: \033[92mGood\033[0m" if expected_mac == mac_hex else f"\033[91mBad\033[0m")
-                    print(f"[Frame {i}] SNR: {snr_mean}")
+                    print(f"[Frame {i}] SNR: {np.round(snr_mean,2)}, Phase1 SNR: {np.round(doc['SNR'],2)}")
 
                     collection.insert_one(insert)
                     return

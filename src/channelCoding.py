@@ -6,10 +6,15 @@ import commpy.channelcoding.ldpc as ldpc
 import numpy as np
 from sionna.phy.fec.ldpc import LDPC5GEncoder, LDPC5GDecoder
 import tensorflow as tf
+from tensorflow.keras import backend
+import gc
 
 import os
 import re
 
+gpus = tf.config.experimental.list_physical_devices("GPU")
+for gpu in gpus:
+    tf.config.experimental.set_memory_growth(gpu, True)
 
 
 def create_LDPC(message_len:int, Codeword_length:int):
@@ -84,8 +89,6 @@ def encode_LDPC(message:list|np.ndarray, Codeword_length:int):
     R = K / N
 
     if R <= 1/5:
-
-
         ldpc_search = {'K':K, 'N':N}
         filename = find_LDPC(ldpc_search)
         if filename is None:
@@ -99,7 +102,12 @@ def encode_LDPC(message:list|np.ndarray, Codeword_length:int):
         kb = filename_paresed['kb']
 
         if len(message) != kb*zc:
-            message = np.concatenate((message, np.zeros(kb*zc - len(message))))
+            message = np.concatenate(
+                                    [
+                                        message, 
+                                        np.zeros(kb*zc - len(message))
+                                    ]
+                                    )
 
         ldpc_param = ldpc.get_ldpc_code_params(ldpc_design_filename=filename, compute_matrix=True)
         codeword = ldpc.triang_ldpc_systematic_encode(message, ldpc_param, 0)
@@ -108,10 +116,16 @@ def encode_LDPC(message:list|np.ndarray, Codeword_length:int):
 
     else:
         encoder = LDPC5GEncoder(K ,N)
-        msg = tf.constant(message, dtype=tf.float32)
+        msg = tf.constant(message, dtype=tf.float32)[None, :]
         codeword = encoder.call(msg)
+        res = codeword.numpy().ravel().tolist()
+        # remove from GPU memory
+        encoder = msg = codeword = None
+        del encoder, msg, codeword
+        backend.clear_session()    # drops the entire graph & its variables
+        gc.collect()   
 
-        return codeword.numpy().flatten().tolist()
+        return res
 
 
 def decode_LDPC(codeword_llr:list|np.ndarray, message_length:int):
@@ -145,12 +159,16 @@ def decode_LDPC(codeword_llr:list|np.ndarray, message_length:int):
     else:
         encoder = LDPC5GEncoder(K ,N_ldpc)
         decoder = LDPC5GDecoder(encoder=encoder,num_iter=20)
-        llr = tf.constant(codeword_llr, dtype=tf.float32)
-        llr = llr*-1
-        decoded = decoder.call(llr)
-
-
-        return decoded.numpy()
+        # llr = tf.constant(codeword_llr, dtype=tf.float32)
+        codeword_llr = codeword_llr*-1
+        decoded = decoder.call(codeword_llr)
+        res = decoded.numpy()
+        # remove from GPU memory
+        encoder = decoder = codeword_llr = None
+        del encoder, decoder, codeword_llr
+        backend.clear_session()
+        gc.collect()
+        return np.array(res, dtype=np.int8)
 
 
 
