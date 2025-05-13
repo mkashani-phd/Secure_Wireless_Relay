@@ -111,7 +111,7 @@ class CONFIG:
         config = {}
 
         ########### APPLICATION LAYER PARAMETERS ############
-        PAYLOAD = "This message is the default payload for the tests, and is 1088 bits long. It will be superposed with MAC tag of "
+        PAYLOAD = "This message is the default payload for the tests, and is 1280 bits long. It will be superposed with MAC tag of 256 bits. In total it will be 2304 bits long msg"
         PREAMBLE_REPEAT = 17
         PREAMBLE =  [1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1]
         POSTAMBLE =  [0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0]
@@ -122,14 +122,14 @@ class CONFIG:
         config['POSTAMBLE'] = POSTAMBLE
         config['PREAMBLE_REPEAT'] = PREAMBLE_REPEAT
         config['PAYLOAD'] = PAYLOAD
-        config['MSG_CODE_RATE'] = 1/2
-        config['MAC_CODE_RATE'] = 1/2
+        config['MSG_CODE_RATE'] = 2/3
+        config['MAC_CODE_RATE'] = 2/3
 
-        config['MSG_SIZE'] = 896
+        config['MSG_SIZE'] = 1280
         config['MAC_SIZE_ENCODED'] = 2304
         config['SUPERPOSED'] = False
         ############## PHY LAYER PARAMETERS #################
-        config['ACQ_TIME'] = 4.0
+        config['ACQ_TIME'] = 5.0
         config['TX_REPEAT'] = 10
         config['RX_MAX_MAGNITUDE_THRESHOLD_SCALE'] = 0.5
         

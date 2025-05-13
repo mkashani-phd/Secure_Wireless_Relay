@@ -70,8 +70,8 @@ class MAC_TX_1D(MAC_TX):
     def __init__(self, ROLE:str, conf: Optional[src.CONFIG] = None):
         super().__init__(ROLE, conf)
 
-        self.payload = src.channelCoding.encode_LDPC(self.payload, len(self.payload)//self.conf.MSG_CODE_RATE)
-        self.MAC_bits = src.channelCoding.encode_LDPC(self.MAC_bits, len(self.MAC_bits)//self.conf.MAC_CODE_RATE)
+        self.payload = src.channelCoding.encode_LDPC(self.payload, np.ceil(len(self.payload)/self.conf.MSG_CODE_RATE))
+        self.MAC_bits = src.channelCoding.encode_LDPC(self.MAC_bits, np.ceil(len(self.MAC_bits)/self.conf.MAC_CODE_RATE))
         self.fsk_signal = self.tx.fsk_modulate(np.concatenate([self.payload, self.MAC_bits]), # sends with half the power,
                 # mac = self.encoded_MAC,
                 # alpha = self.conf.ALPHA,
@@ -196,17 +196,18 @@ class MAC_RX_1D(MAC_RX):
             return None
 
         myclient = pymongo.MongoClient(self.conf.connectionString)
-        mydb = myclient["MAC_1D_R=1_2"]
+        mydb = myclient[f"MAC_1D_R={np.round(self.conf.MSG_CODE_RATE,3)}".replace(".", "_")]
         collection=mydb[f'{self.ROLE}, phase_{phase}']
 
+        MAC_encoded_size = int(np.ceil(256//self.conf.MAC_CODE_RATE))
         r0 ,r1, _ = rs
-        r0_msg = tf.constant(r0[:-512], dtype=tf.float32)   # shape (N,)
-        r1_msg = tf.constant(r1[:-512], dtype=tf.float32)
+        r0_msg = tf.constant(r0[:-1*MAC_encoded_size], dtype=tf.float32)   # shape (N,)
+        r1_msg = tf.constant(r1[:-1*MAC_encoded_size], dtype=tf.float32)
         llr_msg = tf.math.log(r0_msg / r1_msg)                          
 
 
-        r0_mac = tf.constant(r0[-512:], dtype=tf.float32)   # shape (N,)
-        r1_mac = tf.constant(r1[-512:], dtype=tf.float32)
+        r0_mac = tf.constant(r0[-1*MAC_encoded_size:], dtype=tf.float32)   # shape (N,)
+        r1_mac = tf.constant(r1[-1*MAC_encoded_size:], dtype=tf.float32)
         llr_mac = tf.math.log(r0_mac / r1_mac)    
 
 
@@ -255,7 +256,7 @@ class MAC_RX_SC(MAC_RX):
 
     def process_frame(self, i, phase:int = 1):
         myclient = pymongo.MongoClient(self.conf.connectionString)
-        mydb = myclient["MAC_SC_R=1_2"]
+        mydb = myclient[f"MAC_SC_R={np.round(self.conf.MSG_CODE_RATE,3)}".replace(".", "_")]
         collection=mydb[f'{self.ROLE}, phase_{phase}']
 
         if self.ROLE == "relay":
@@ -339,7 +340,7 @@ class MAC_RX_SC(MAC_RX):
                     return
                 
 
-                mydb = myclient["MAC_SC_R=1_2"]
+                mydb = myclient[f"MAC_SC_R={np.round(self.conf.MSG_CODE_RATE,3)}".replace(".", "_")]
                 collection=mydb[f'{self.ROLE}, phase_{phase}']
                 try:
                     msg_hard_decision, snr_mean, rs = self.primary_process(i)
