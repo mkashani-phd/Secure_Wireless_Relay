@@ -391,11 +391,10 @@ class PostProcessing:
             # energy_band = np.sum(np.abs(fft[lower_bound:upper_bound])**2)
 
             # # Compute energy in the rest of the band
-            # energy_rest = np.sum(np.abs(fft)**2) - energy_band
+            # energy_rest = np.sum(np.abs(fft)**2) - energy_band 
 
             # # Compare energies
-            # energy_ratio =  energy_band / energy_rest
-
+            # energy_ratio =  energy_band / energy_res
 
 
             if State == 0: # Wait for the rising edge of the begining burst
