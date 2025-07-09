@@ -183,15 +183,19 @@ class Demodulation:
             f0, f1 = self.f_energy(self.butter(symbols[i:i + symbol_length]), symbol_length)
             hard_decision.append(self.decision(f0, f1))
 
-        # # Compute FFT and power spectrum
-        # fft_symbols = np.fft.fft(symbols.reshape(n_symbols, symbol_length), axis=1)
-        # #plot the ffts stacks as a 2D image
-        # plt.imshow(np.abs(fft_symbols), aspect='auto', cmap='hot')
-        # plt.colorbar()
-        # plt.title("FFT Stacks")
-        # plt.xlabel("FFT Bins")
-        # plt.ylabel("Symbols")
-        # plt.show()
+        # Compute FFT and power spectrum
+
+        freqs = np.fft.fftfreq(symbol_length, 1/self.conf.RX_RATE)
+
+        freqs   = np.fft.fftshift(freqs)
+        fft_symbols = np.fft.fft(symbols.reshape(n_symbols, symbol_length), axis=1)
+        #plot the ffts stacks as a 2D image
+        plt.imshow(np.abs(fft_symbols), aspect='auto', cmap='hot')
+        plt.colorbar()
+        plt.title("FFT Stacks")
+        plt.xlabel("Freq")
+        plt.ylabel("Symbols")
+        plt.show()
 
         # # lpf the fft and plot again
         # symbols2 = [self.butter(symbol) for symbol in symbols.reshape(n_symbols, symbol_length)] 

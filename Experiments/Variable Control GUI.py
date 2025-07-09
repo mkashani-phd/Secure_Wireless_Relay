@@ -17,6 +17,7 @@ slider_fields = {
     'RX_MAX_MAGNITUDE_THRESHOLD_SCALE': (0.0, 1.0, 0.01),
     "TX_PAYLOAD_POWER_SCALE" : (0.0, 1.0, 0.0001),
     'FREQ': (.5e9, 6.0e9, 1e8),
+    'FREQ_DEV': (25e3, 250e3, 25e3),
     'TX_SPS': (1, 200, 1),
     'TX_RATE': (1e6, 50e6, 1e5),
     'RX_RATE': (1e6, 50e6, 1e5),

@@ -54,6 +54,7 @@ class CONFIG:
         self.MAC_SIZE_ENCODED = self.config['MAC_SIZE_ENCODED']
 
         self.FREQ = self.config['FREQ']
+        self.FREQ_DEV = self.config['FREQ_DEV']  
         self.TX_RATE = self.config['TX_RATE']
         self.TX_GAIN = self.config['TX_GAIN']
         self.TX_RELAY_GAIN = self.config['TX_RELAY_GAIN']
@@ -122,11 +123,18 @@ class CONFIG:
         config['POSTAMBLE'] = POSTAMBLE
         config['PREAMBLE_REPEAT'] = PREAMBLE_REPEAT
         config['PAYLOAD'] = PAYLOAD
-        config['MSG_CODE_RATE'] = 2/3
-        config['MAC_CODE_RATE'] = 2/3
 
-        config['MSG_SIZE'] = 1280
-        config['MAC_SIZE_ENCODED'] = 2304
+   
+
+        
+        config['MAC_CODE_RATE'] = 1/45  
+        config['MSG_CODE_RATE'] = 1/2
+
+        config['MSG_SIZE'] = int(256/config['MAC_CODE_RATE'] * config['MSG_CODE_RATE']) - 256
+
+      
+
+        config['MAC_SIZE_ENCODED'] =  config['MSG_SIZE']/config['MSG_CODE_RATE'] + 256/config['MSG_CODE_RATE'] 
         config['SUPERPOSED'] = False
         ############## PHY LAYER PARAMETERS #################
         config['ACQ_TIME'] = 5.0
@@ -140,6 +148,7 @@ class CONFIG:
 
         config['MAC_KEY'] = "key"
         config['FREQ'] = 1.9e9
+        config['FREQ_DEV'] = 250e3
         config['TX_SPS'] = 40
         config['TX_RATE'] = 1e6
         config['RX_RATE'] = 5e6

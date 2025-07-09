@@ -30,10 +30,11 @@ class TX:
 
     def bits_to_symbols(self, bit_list):
         bit_array = np.array(bit_list)
-        symbols = np.where(bit_array == 1, 9.5, -9.5).astype(np.float32)
+        symbols = np.where(bit_array == 1, 1, -1).astype(np.float32) 
         return symbols
 
     def fsk_modulate(self, bits, sps, preamble, postamble, scale = 1/2,  mac = None, alpha = 0):
+ 
 
         payload_bits= np.concatenate([preamble, bits, postamble])
         indx = slice(len(preamble)*sps, (len(preamble) + len(bits))*sps)
@@ -41,11 +42,15 @@ class TX:
         payload_symbols = self.bits_to_symbols(payload_bits)
         mac_symbols = self.bits_to_symbols(mac) if mac is not None else None
 
-        payload_upsampled = np.repeat(payload_symbols, sps) / np.sqrt(sps)
-        mac_upsampled = np.repeat(mac_symbols, sps) / np.sqrt(sps) if mac_symbols is not None else None
+        payload_upsampled = np.repeat(payload_symbols, sps)
+        mac_upsampled = np.repeat(mac_symbols, sps)  if mac_symbols is not None else None
 
-        payload_phase = np.cumsum(payload_upsampled)
-        mac_phase = np.cumsum(mac_upsampled) if mac_upsampled is not None else None
+
+        phase_step = 2*np.pi *  self.conf.FREQ_DEV/self.conf.TX_RATE    # = 2π·25 000/1 000 000 = 0.1571
+
+
+        payload_phase = np.cumsum(payload_upsampled* phase_step)
+        mac_phase = np.cumsum(mac_upsampled* phase_step) if mac_upsampled is not None else None
 
 
         payload_signal = np.exp(1j * payload_phase).astype(np.complex64)
