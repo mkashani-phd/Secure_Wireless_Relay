@@ -85,8 +85,8 @@ class CONFIG:
         self.SUPERPOSED = self.config['SUPERPOSED']
         self.ALPHA = self.config['ALPHA']
 
-        self.MIN_FRAME_SIZE = self.config['MIN_FRAME_SIZE']
-        self.WINDOW = self.config['WINDOW']
+        self.MIN_FRAME_SIZE =((len(self.config['PAYLOAD']*8)/self.config['MSG_CODE_RATE'])+2*len(self.config['PREAMBLE']))* self.config['TX_SPS'] * self.config['RX_RATE']/self.config['TX_RATE']
+        self.WINDOW = int(self.config['TX_SPS'] * self.config['RX_RATE']/self.config['TX_RATE'])
 
         self._minSize = self.config['_minSize']
         self._maxSize = self.config['_maxSize']
@@ -154,8 +154,8 @@ class CONFIG:
         config['RX_RATE'] = 5e6
         config['LPF_CUTOFF'] = 3e5 
 
-        config['MIN_FRAME_SIZE'] = ((len(PAYLOAD*8)/config['MSG_CODE_RATE'])+2*len(PREAMBLE))* config['TX_SPS'] * config['RX_RATE']/config['TX_RATE']
-        config['WINDOW'] = int(config['TX_SPS'] * config['RX_RATE']/config['TX_RATE'])
+
+
 
         ########## USRP PARAMETERS ######################
         config['SOURCE'] = "8000169"

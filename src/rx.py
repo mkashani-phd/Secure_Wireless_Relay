@@ -129,8 +129,8 @@ class Demodulation:
     
     def f_energy(self, frame,window):
         fft = np.fft.fft(frame[:window])
-        f1 = np.sum(np.abs(fft[0:30])**2)
-        f0 = np.sum(np.abs(fft[170:200])**2)
+        f1 = np.sum(np.abs(fft[:window//2])**2)
+        f0 = np.sum(np.abs(fft[window//2:])**2)
         return f0,f1
     
     def decision(self, f0, f1):
