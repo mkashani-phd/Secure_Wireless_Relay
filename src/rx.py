@@ -127,11 +127,33 @@ class Demodulation:
     def butter(self,input):
         return scipy.signal.sosfilt(self.fltr, input) 
     
-    def f_energy(self, frame,window):
-        fft = np.fft.fft(frame[:window])
-        f1 = np.sum(np.abs(fft[:window//2])**2)
-        f0 = np.sum(np.abs(fft[window//2:])**2)
-        return f0,f1
+    def f_energy(self, frame):
+        # ffSize = len(frame)
+        # r_half = 0
+        # for i in range(-ffSize//4,ffSize//4):
+        #     r_half += np.abs(np.fft.fft(frame)[ ffSize//2 + i])**2
+
+        N = len(frame)
+        t = np.arange(N) / self.conf.RX_RATE
+        angle = 2 * np.pi * (- self.conf.FREQ_DEV) * t
+        rotated = frame * np.exp(-1j * angle)
+        E0 = np.abs(np.sum(rotated))**2
+        
+
+        angle1 = 2 * np.pi * (self.conf.FREQ_DEV) * t
+        rotated1 = frame * np.exp(-1j * angle1)
+        E1 = np.abs(np.sum(rotated1))**2
+
+
+        # x: your signal, fs: sampling rate in Hz
+        f, Pxx = scipy.signal.welch(frame, fs=self.conf.RX_RATE, nperseg=1024)
+
+        # Pxx is the power spectral density (V^2/Hz).
+        # To get total noise power over a bandwidth B you’d integrate Pxx over B:
+        # e.g. if you want total noise 0–fs/2 Hz:
+        noise_power = np.trapz(Pxx, f)
+        SNR = 10*np.log10((E0+E1)/noise_power)
+        return E0,E1,SNR
     
     def decision(self, f0, f1):
         return 0 if f1 < f0 else 1
@@ -179,9 +201,17 @@ class Demodulation:
         n_symbols = (len(signal) - offset) // symbol_length
         symbols = signal[offset:n_symbols * symbol_length + offset]
         hard_decision = []
+        r0 = []
+        r1 = []
+        SNR = []
+        llrs = []
         for i in range(0, len(symbols), symbol_length):
-            f0, f1 = self.f_energy(self.butter(symbols[i:i + symbol_length]), symbol_length)
-            hard_decision.append(self.decision(f0, f1))
+            E0, E1, snr = self.f_energy(self.butter(symbols[i:i + symbol_length]))
+            r0.extend([E0])
+            r1.extend([E1])
+            llrs.extend([np.log(E1/E0)])
+            SNR.extend([snr])
+            hard_decision.extend([self.decision(E0, E1)])
 
         # Compute FFT and power spectrum
 
@@ -209,34 +239,27 @@ class Demodulation:
 
 
 
-        # For legacy return values
-        fft_symbols = np.array(np.power(np.abs(np.fft.fft(symbols.reshape(n_symbols, symbol_length), axis=1)),2), dtype=np.float32)
-        r0 = 0
-        for i in range(-3,4):
-            r0 += fft_symbols[:, tone_bins[1] + i] 
+        # # For legacy return values
+        # fft_symbols = np.array(np.power(np.abs(np.fft.fft(symbols.reshape(n_symbols, symbol_length), axis=1)),2), dtype=np.float32)
+ 
+        # ffSize = fft_symbols.shape[1]
+        # r_half = 0
+        # for i in range(-20,20):
+        #     r_half += fft_symbols[:, ffSize//2 + i]
 
-        r1 = 0
-        for i in range(-3,4):
-            r1 += fft_symbols[:, tone_bins[0] + i]
-        
-        ffSize = fft_symbols.shape[1]
-        r_half = 0
-        for i in range(-20,20):
-            r_half += fft_symbols[:, ffSize//2 + i]
+        # r_noise  = r_half
 
-        r_noise  = r_half
-
-        r_half = r_half / 40 * 7
+        # r_half = r_half / 40 
     
 
-        r_signal = 0
-        for i in range(-20,20):
-            r_signal += fft_symbols[:, i]
+        # r_signal = 0
+        # for i in range(-20,20):
+        #     r_signal += fft_symbols[:, i]
         
-        SNR = 10*np.log10(r_signal/r_noise)
+        # SNR = 10*np.log10(r_signal/r_noise)
         
 
-        return hard_decision, [r0, r1, r_half], SNR
+        return hard_decision, [r0, r1], SNR, llrs
 
     def successive_cancellation(self, msg_decoded_bits, rs):
         r0, r1, r_half = rs
@@ -321,18 +344,21 @@ class Demodulation:
             cnt += 1
         
         if best_index != -1:
-            # print(f"Best match found at index {best_index} with average vote score {best_score}")
+            print(f"Best match found at index {best_index} with average vote score {best_score}")
             return best_index
         else:
             # print("Known sequence not found")
             return None
 
     def detect_message_indices(self,received, preamble, postamble, repeat, cooefficient=2):
-        preamble = preamble
+        preamble = preamble.copy()
+        postamble = postamble.copy()
         received_start = self.find_best_sequence(received[:len(preamble)*cooefficient], preamble[::repeat], repeat)
         received_end = self.find_best_sequence(received[-cooefficient*len(preamble):], postamble[::repeat], repeat)
         if received_start is None or received_end is None:
             return None, None
+        
+        print(received_start , received_end, cooefficient*len(postamble))
         return received_start + len(preamble), received_end + len(received)-(cooefficient*len(postamble))
 
     

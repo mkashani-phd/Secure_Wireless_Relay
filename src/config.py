@@ -76,16 +76,18 @@ class CONFIG:
 
         self.IN_CHAMBER = self.config['IN_CHAMBER']
 
-        self.PREAMBLE = self.config['PREAMBLE']
-        self.POSTAMBLE = self.config['POSTAMBLE']
         self.PREAMBLE_REPEAT = self.config['PREAMBLE_REPEAT']
+
+        self.PREAMBLE =  np.repeat(self.config['PREAMBLE'], self.config['PREAMBLE_REPEAT']).tolist()
+        self.POSTAMBLE =  np.repeat(self.config['POSTAMBLE'], self.config['PREAMBLE_REPEAT']).tolist()
+
         self.PAYLOAD = self.config['PAYLOAD']
         self.MSG_CODE_RATE = self.config['MSG_CODE_RATE']
         self.MAC_CODE_RATE = self.config['MAC_CODE_RATE']
         self.SUPERPOSED = self.config['SUPERPOSED']
         self.ALPHA = self.config['ALPHA']
 
-        self.MIN_FRAME_SIZE =((len(self.config['PAYLOAD']*8)/self.config['MSG_CODE_RATE'])+2*len(self.config['PREAMBLE']))* self.config['TX_SPS'] * self.config['RX_RATE']/self.config['TX_RATE']
+        self.MIN_FRAME_SIZE =((len(self.config['PAYLOAD']*8)/self.config['MSG_CODE_RATE'])+2*len(self.PREAMBLE ))* self.config['TX_SPS'] * self.config['RX_RATE']/self.config['TX_RATE']
         self.WINDOW = int(self.config['TX_SPS'] * self.config['RX_RATE']/self.config['TX_RATE'])
 
         self._minSize = self.config['_minSize']
@@ -113,15 +115,13 @@ class CONFIG:
 
         ########### APPLICATION LAYER PARAMETERS ############
         PAYLOAD = "This message is the default payload for the tests, and is 1280 bits long. It will be superposed with MAC tag of 256 bits. In total it will be 2304 bits long msg"
-        PREAMBLE_REPEAT = 17
-        PREAMBLE =  [1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1]
-        POSTAMBLE =  [0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0]
-        PREAMBLE = np.repeat(PREAMBLE, PREAMBLE_REPEAT).tolist()
-        POSTAMBLE = np.repeat(POSTAMBLE, PREAMBLE_REPEAT).tolist()
 
-        config['PREAMBLE'] = PREAMBLE
-        config['POSTAMBLE'] = POSTAMBLE
-        config['PREAMBLE_REPEAT'] = PREAMBLE_REPEAT
+
+
+        config['PREAMBLE'] = [1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1]
+        config['POSTAMBLE'] = [1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1]
+
+        config['PREAMBLE_REPEAT'] = 17
         config['PAYLOAD'] = PAYLOAD
 
    
@@ -143,16 +143,16 @@ class CONFIG:
         
 
         
-        config['ALPHA'] = 0.1
+        config['ALPHA'] = 0.2
 
 
         config['MAC_KEY'] = "key"
         config['FREQ'] = 1.9e9
-        config['FREQ_DEV'] = 250e3
-        config['TX_SPS'] = 40
-        config['TX_RATE'] = 1e6
-        config['RX_RATE'] = 5e6
-        config['LPF_CUTOFF'] = 3e5 
+        config['FREQ_DEV'] = 1e5
+        config['TX_SPS'] = 100
+        config['TX_RATE'] = 1e7
+        config['RX_RATE'] = 2e7
+        config['LPF_CUTOFF'] = 6e5 
 
 
 
@@ -181,7 +181,7 @@ class CONFIG:
         config['_minSize'] = 1e3
         config['_maxSize'] = 99.99e6
         config['_minFrames'] = 1
-        config['_maxFrames'] = 60
+        config['_maxFrames'] = 100
 
         return config
 
