@@ -128,32 +128,17 @@ class Demodulation:
         return scipy.signal.sosfilt(self.fltr, input) 
     
     def f_energy(self, frame):
-        # ffSize = len(frame)
-        # r_half = 0
-        # for i in range(-ffSize//4,ffSize//4):
-        #     r_half += np.abs(np.fft.fft(frame)[ ffSize//2 + i])**2
-
         N = len(frame)
         t = np.arange(N) / self.conf.RX_RATE
         angle = 2 * np.pi * (- self.conf.FREQ_DEV) * t
         rotated = frame * np.exp(-1j * angle)
         E0 = np.abs(np.sum(rotated))**2
-        
 
         angle1 = 2 * np.pi * (self.conf.FREQ_DEV) * t
         rotated1 = frame * np.exp(-1j * angle1)
         E1 = np.abs(np.sum(rotated1))**2
 
-
-        # x: your signal, fs: sampling rate in Hz
-        f, Pxx = scipy.signal.welch(frame, fs=self.conf.RX_RATE, nperseg=1024)
-
-        # Pxx is the power spectral density (V^2/Hz).
-        # To get total noise power over a bandwidth B you’d integrate Pxx over B:
-        # e.g. if you want total noise 0–fs/2 Hz:
-        noise_power = np.trapz(Pxx, f)
-        SNR = 10*np.log10((E0+E1)/noise_power)
-        return E0,E1,SNR
+        return E0,E1
     
     def decision(self, f0, f1):
         return 0 if f1 < f0 else 1
@@ -191,7 +176,7 @@ class Demodulation:
     
     
 
-    def compute_hard_desicion_and_rs(self, signal, symbol_length, tone_bins, message_bits_for_sure=None):
+    def compute_hard_desicion_and_rs(self, signal, symbol_length, tone_bins, message_bits_for_sure=None, plot = False):
         if message_bits_for_sure is None:
             message_bits_for_sure = utils.string_to_bits(self.conf.PAYLOAD)
 
@@ -206,60 +191,25 @@ class Demodulation:
         SNR = []
         llrs = []
         for i in range(0, len(symbols), symbol_length):
-            E0, E1, snr = self.f_energy(self.butter(symbols[i:i + symbol_length]))
+            E0, E1 = self.f_energy(self.butter(symbols[i:i + symbol_length]))
             r0.extend([E0])
             r1.extend([E1])
             llrs.extend([np.log(E1/E0)])
-            SNR.extend([snr])
             hard_decision.extend([self.decision(E0, E1)])
 
         # Compute FFT and power spectrum
 
-        freqs = np.fft.fftfreq(symbol_length, 1/self.conf.RX_RATE)
+        if plot:
+            fft_symbols = np.fft.fft(symbols.reshape(n_symbols, symbol_length), axis=1)
+            #plot the ffts stacks as a 2D image
+            plt.imshow(np.abs(fft_symbols), aspect='auto', cmap='hot')
+            plt.colorbar()
+            plt.title("FFT Stacks")
+            plt.xlabel("Freq")
+            plt.ylabel("Symbols")
+            plt.show()
 
-        freqs   = np.fft.fftshift(freqs)
-        fft_symbols = np.fft.fft(symbols.reshape(n_symbols, symbol_length), axis=1)
-        #plot the ffts stacks as a 2D image
-        plt.imshow(np.abs(fft_symbols), aspect='auto', cmap='hot')
-        plt.colorbar()
-        plt.title("FFT Stacks")
-        plt.xlabel("Freq")
-        plt.ylabel("Symbols")
-        plt.show()
-
-        # # lpf the fft and plot again
-        # symbols2 = [self.butter(symbol) for symbol in symbols.reshape(n_symbols, symbol_length)] 
-        # fft_symbols2 = np.fft.fft(symbols2)
-        # plt.imshow(np.abs(fft_symbols2), aspect='auto', cmap='hot')
-        # plt.colorbar()
-        # plt.title("FFT Stacks after LPF")
-        # plt.xlabel("FFT Bins")
-        # plt.ylabel("Symbols")
-        # plt.show()
-
-
-
-        # # For legacy return values
-        # fft_symbols = np.array(np.power(np.abs(np.fft.fft(symbols.reshape(n_symbols, symbol_length), axis=1)),2), dtype=np.float32)
- 
-        # ffSize = fft_symbols.shape[1]
-        # r_half = 0
-        # for i in range(-20,20):
-        #     r_half += fft_symbols[:, ffSize//2 + i]
-
-        # r_noise  = r_half
-
-        # r_half = r_half / 40 
-    
-
-        # r_signal = 0
-        # for i in range(-20,20):
-        #     r_signal += fft_symbols[:, i]
-        
-        # SNR = 10*np.log10(r_signal/r_noise)
-        
-
-        return hard_decision, [r0, r1], SNR, llrs
+        return hard_decision, [r0, r1], llrs
 
     def successive_cancellation(self, msg_decoded_bits, rs):
         r0, r1, r_half = rs
@@ -290,6 +240,30 @@ class Demodulation:
         SC_llr[cond3] = np.log((alpha * r0[cond3]) / r1[cond3])
 
         return SC_llr
+    
+
+    def joint_detection(self, llrs, SNR):
+        alpha = self.conf.ALPHA
+        EbN0 = 10**(np.average(SNR) / 10)
+        thr_pos = (np.log(((1 - alpha) * EbN0 + 1) / (alpha * EbN0 + 1)) + np.log(1 + EbN0)) / 2
+        thr_neg = (np.log((alpha * EbN0 + 1) / ((1 - alpha) * EbN0 + 1)) - np.log(1 + EbN0)) / 2
+        n_hat = []
+
+        for d in llrs:
+            if d > 0:
+                n_hat.extend([1]) if d > thr_pos else n_hat.extend([0])
+            else:
+                n_hat.extend([0]) if d < thr_neg else n_hat.extend([1])
+
+        return np.array(n_hat)
+
+    def get_SNR(self, frame_raw, noise_raw, dB = True):
+        x,n = self.butter(frame_raw), self.butter(noise_raw)
+        snr_linear = np.mean(np.abs(x)**2)/np.mean(np.abs(n)**2)
+        if dB:
+            return 10*np.log10(snr_linear)
+        else:
+            return snr_linear
 
     def binary_list_to_hex(self, binary_list):
         # Ensure the length of the list is a multiple of 4
@@ -375,7 +349,10 @@ class PostProcessing:
         self.plot = plot
 
         self.IQsamples = np.fromfile(file, np.complex64)
+        self.noise = None
         self.Frames = self.frameFinder()
+
+
 
 
         self.fltr = scipy.signal.butter(30, self.conf.LPF_CUTOFF, 'low', analog=False, output='sos',fs=self.conf.RX_RATE)
@@ -389,6 +366,7 @@ class PostProcessing:
     
     def frameByNumber(self,frame_nr:int):
         return self.Frames[frame_nr]
+
         
 
     def frameFinder(self):
