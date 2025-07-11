@@ -114,8 +114,7 @@ class CONFIG:
         config = {}
 
         ########### APPLICATION LAYER PARAMETERS ############
-        PAYLOAD = "This message is the default payload for the tests, and is 1280 bits long. It will be superposed with MAC tag of 256 bits. In total it will be 2304 bits long msg"
-
+        PAYLOAD = "This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 co"
 
 
         config['PREAMBLE'] = [1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1]

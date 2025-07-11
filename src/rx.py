@@ -242,11 +242,10 @@ class Demodulation:
         return SC_llr
     
 
-    def joint_detection(self, llrs, SNR):
+    def joint_detection(self, llrs, snr_linear, plot = False):
         alpha = self.conf.ALPHA
-        EbN0 = 10**(np.average(SNR) / 10)
-        thr_pos = (np.log(((1 - alpha) * EbN0 + 1) / (alpha * EbN0 + 1)) + np.log(1 + EbN0)) / 2
-        thr_neg = (np.log((alpha * EbN0 + 1) / ((1 - alpha) * EbN0 + 1)) - np.log(1 + EbN0)) / 2
+        thr_pos = (np.log(((1 - alpha) * snr_linear + 1) / (alpha * snr_linear + 1)) + np.log(1 + snr_linear)) / 2
+        thr_neg = (np.log((alpha * snr_linear + 1) / ((1 - alpha) * snr_linear + 1)) - np.log(1 + snr_linear)) / 2
         n_hat = []
 
         for d in llrs:
@@ -254,6 +253,12 @@ class Demodulation:
                 n_hat.extend([1]) if d > thr_pos else n_hat.extend([0])
             else:
                 n_hat.extend([0]) if d < thr_neg else n_hat.extend([1])
+
+        if plot:
+            temp = plt.hist(llrs, bins=100)
+            plt.vlines(thr_neg, 0, max(temp[0]*1.2),'r')
+            plt.vlines(thr_pos, 0, max(temp[0]*1.2),'r')
+            plt.title(f"SNR (dB): {np.round(10*np.log10(snr_linear),3)}")
 
         return np.array(n_hat)
 
@@ -318,7 +323,7 @@ class Demodulation:
             cnt += 1
         
         if best_index != -1:
-            print(f"Best match found at index {best_index} with average vote score {best_score}")
+            # print(f"Best match found at index {best_index} with average vote score {best_score}")
             return best_index
         else:
             # print("Known sequence not found")
@@ -349,7 +354,6 @@ class PostProcessing:
         self.plot = plot
 
         self.IQsamples = np.fromfile(file, np.complex64)
-        self.noise = None
         self.Frames = self.frameFinder()
 
 
