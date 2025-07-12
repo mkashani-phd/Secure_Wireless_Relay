@@ -197,6 +197,10 @@ class Demodulation:
             llrs.extend([np.log(E1/E0)])
             hard_decision.extend([self.decision(E0, E1)])
 
+        frame = frame[strt*pp.conf.WINDOW:end*pp.conf.WINDOW]
+        snr_lin = self.demod.get_SNR(frame_raw=frame, noise_raw=pp.IQsamples[strt*pp.conf.WINDOW:end*pp.conf.WINDOW], dB= False)
+        n_hat = self.demod.joint_detection(llrs=llrs[strt:end], snr_linear=snr_lin,plot=True)
+
         # Compute FFT and power spectrum
 
         if plot:
@@ -283,7 +287,15 @@ class Demodulation:
         return hex_string.lower()  # Convert to uppercase if desired
 
     def decode(self, frame):
-        return self.compute_hard_desicion_and_rs(frame, self.conf.WINDOW, [10,190])
+
+        sig_1 = np.abs(np.fft.fft(frame))[0:len(frame)//2]
+        sig_2 = np.abs(np.fft.fft(frame))[len(frame)//2:]
+        sig_1_max = np.where(sig_1 == max(sig_1))[0]
+        sig_2_max = np.where(sig_2 == max(sig_2))[0] +len(frame)//2 
+        freqs = np.fft.fftfreq(n = len(frame), d= 1/self.conf.RX_RATE)
+        tone_0, tone_1 = int(np.round(sig_1_max/len(freqs)*self.conf.WINDOW)) ,  int(np.round(sig_2_max/len(freqs)*self.conf.WINDOW))
+        # print(tone_0, freqs[sig_1_max], tone_1, freqs[sig_2_max])
+        return self.compute_hard_desicion_and_rs(frame, self.conf.WINDOW, [tone_0,tone_1])
         
 
 

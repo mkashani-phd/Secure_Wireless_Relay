@@ -89,8 +89,9 @@ class MAC_TX_SC(MAC_TX):
 
         if ROLE == "source":
             self.payload = src.channelCoding.encode_LDPC(self.payload, self.conf.MAC_SIZE_ENCODED)
-            self.encoded_MAC = src.channelCoding.encode_LDPC(self.MAC_bits, len(self.MAC_bits)*3)
-            self.encoded_MAC = src.channelCoding.encode_LDPC(self.encoded_MAC, len(self.encoded_MAC)*3)
+            self.encoded_MAC = src.channelCoding.encode_LDPC(self.MAC_bits, len(self.MAC_bits)*4.5)
+            self.encoded_MAC = np.repeat(self.encoded_MAC, 10)
+            
 
             if len(self.payload) != len(self.encoded_MAC):
                 raise ValueError(f"Payload size {len(self.payload)} is not equal to the MAC size {len(self.encoded_MAC)}")
@@ -136,7 +137,8 @@ class MAC_RX(MAC):
         
     def primary_process(self, i):
         frame = self.pp.frameByNumber(i)
-        hard_decision, rs, SNR = self.demod.decode(frame)
+        hard_decision, rs, llr = self.demod.decode(frame)
+    
         index = self.demod.detect_message_indices(
             received=list(hard_decision),
             preamble=self.conf.PREAMBLE,
@@ -149,15 +151,14 @@ class MAC_RX(MAC):
             return None
 
         msg_hard_decision = hard_decision[index[0]:index[1]]
-        snr_window = SNR[index[0]+10:index[1]-10]
-        snr_mean = float(np.nanmean(snr_window))
 
-        r0 ,r1, r_half = rs
+
+        r0 ,r1 = rs
         r0 =        r0[index[0]:index[1]]
         r1 =        r1[index[0]:index[1]]
-        r_half =    r_half[index[0]:index[1]]
+   
 
-        return msg_hard_decision, snr_mean, [r0, r1, r_half]
+        return msg_hard_decision, snr_mean, [r0, r1]
 
     def process_frame(self, i, phase:int = 1):
         msg_hard_decision, snr_mean, rs = self.primary_process(i)
