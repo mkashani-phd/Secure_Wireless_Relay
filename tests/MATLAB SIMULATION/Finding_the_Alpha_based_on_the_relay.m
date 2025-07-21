@@ -28,7 +28,7 @@ for alpha = 0:.05:.3
     alpha
     % Power‐allocation factor (0 < alpha < 0.5)       
     % Eb/N0 range (dB) and storage for BER
-    Eb = .1:.01:2;
+    Eb = .1:.01:.7;
     N0 = .1;
     EbN0_arr = Eb./N0;
     BER_m   = zeros(size(EbN0_arr));
@@ -129,12 +129,12 @@ for alpha = 0:.05:.3
         BER_m(idx) = errors_m/Nbits;
         BER_n(idx) = errors_n/Nbits;
         BER_n2(idx) = errors_n2/Nbits;
-        R = 1/4;
+        R = 1/2;
         L = 256/R;
         Pe_q(idx) = get_Pe(L, BER_n(idx), R);
     
     
-        m = 256*45;
+        m = 5504;
         tag = 256;
         R = .5;
         % estimate the probability of message error on relay in trad
@@ -163,20 +163,20 @@ for alpha = 0:.05:.3
         fprintf('Eb/N0 = %2d dB: BER_m = %.2e, BER_n = %.2e, Pe_t_trad = %2e, Pe_t_proposed = %2e\n', ...
                 10.*log10(EbN0_arr(idx)), BER_m(idx), BER_n(idx), Pe_t_trad(idx), Pe_t_proposed(idx));
     end
-        if alpha == 0
-            alpha
-            semilogy(10.*log(EbN0_arr/R), Pe_t_trad, 'o-','LineWidth',3.5,'DisplayName','Pe,t->traditional'); hold on;
-        else
-            alpha
-            semilogy(10.*log((alpha)*EbN0_arr/R), Pe_t_proposed, 's-','LineWidth',1.5, 'DisplayName',sprintf('Pe,t->alpha = %2e', alpha)); hold on;
-        end
+    %     if alpha == 0
+    %         alpha
+    %         semilogy(10.*log(EbN0_arr/R), Pe_t_trad, 'o-','LineWidth',3.5,'DisplayName','Pe,t->traditional'); hold on;
+    %     else
+    %         alpha
+    %         semilogy(10.*log((alpha)*EbN0_arr/R), Pe_t_proposed, 's-','LineWidth',1.5, 'DisplayName',sprintf('Pe,t->alpha = %2e', alpha)); hold on;
+    %     end
 end
 % Plot results
 
-% semilogy(10.*log(EbN0_arr), BER_m, 'o-','LineWidth',1.5); hold on;
-% semilogy(10.*log(EbN0_arr), BER_n, 's-','LineWidth',1.5);
+semilogy(10.*log(EbN0_arr), BER_m, 'o-','LineWidth',1.5); hold on;
+semilogy(10.*log(EbN0_arr), BER_n, 's-','LineWidth',1.5);
 % 
-% semilogy(10.*log(EbN0_arr), 0.5*exp(-Eb./(2.*N0)), '-','LineWidth',1.5, 'DisplayName','0.5*exp(-Eb./(2.*N0))')
+semilogy(10.*log(EbN0_arr), 0.5*exp(-Eb./(2.*N0)), '-','LineWidth',1.5, 'DisplayName','0.5*exp(-Eb./(2.*N0))')
 grid on;
 xlabel('Eb/N0 (dB)');
 ylabel('Bit Error Rate');

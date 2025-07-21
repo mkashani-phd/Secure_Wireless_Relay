@@ -188,7 +188,6 @@ class Demodulation:
         hard_decision = []
         r0 = []
         r1 = []
-        SNR = []
         llrs = []
         for i in range(0, len(symbols), symbol_length):
             E0, E1 = self.f_energy(self.butter(symbols[i:i + symbol_length]))
@@ -197,9 +196,9 @@ class Demodulation:
             llrs.extend([np.log(E1/E0)])
             hard_decision.extend([self.decision(E0, E1)])
 
-        frame = frame[strt*pp.conf.WINDOW:end*pp.conf.WINDOW]
-        snr_lin = self.demod.get_SNR(frame_raw=frame, noise_raw=pp.IQsamples[strt*pp.conf.WINDOW:end*pp.conf.WINDOW], dB= False)
-        n_hat = self.demod.joint_detection(llrs=llrs[strt:end], snr_linear=snr_lin,plot=True)
+        # signal = signal[strt*pp.conf.WINDOW:end*pp.conf.WINDOW]
+        # snr_lin = self.demod.get_SNR(frame_raw=frame, noise_raw=pp.IQsamples[strt*pp.conf.WINDOW:end*pp.conf.WINDOW], dB= False)
+        # n_hat = self.demod.joint_detection(llrs=llrs[strt:end], snr_linear=snr_lin,plot=True)
 
         # Compute FFT and power spectrum
 
@@ -215,21 +214,23 @@ class Demodulation:
 
         return hard_decision, [r0, r1], llrs
 
-    def successive_cancellation(self, msg_decoded_bits, rs):
-        r0, r1, r_half = rs
+    def successive_cancellation(self, msg_decoded_bits, rs, snr_linear):
+        r0, r1= rs
         alpha = self.conf.ALPHA
 
         msg_decoded_bits = np.asarray(msg_decoded_bits)
         r0 = np.asarray(r0)
         r1 = np.asarray(r1)
-        r_half = np.asarray(r_half)
+        r_half = np.array([(np.mean(r0)+np.mean(r1))/snr_linear]*len(r0))
 
         # Allocate result array
         SC_llr = np.empty_like(r0)
 
         # Bit = 0 cases
+        T = 0.85
+        # T = 0.076 * np.log10(snr_linear) + 0.7907
         bit0_mask = (msg_decoded_bits == 0)
-        cond0 = r1 > alpha*.9 * r0
+        cond0 = r1 > alpha*T * r0
         cond0 &= bit0_mask
         cond1 = bit0_mask & ~cond0
         SC_llr[cond0] = np.log(r_half[cond0] / r1[cond0])
@@ -237,9 +238,9 @@ class Demodulation:
 
         # Bit = 1 cases
         bit1_mask = ~bit0_mask
-        cond2 = r0 > alpha*.9 * r1
+        cond2 = r0 > alpha*T * r1
         cond2 &= bit1_mask
-        cond3 = bit1_mask & ~cond2
+        cond3 = bit1_mask & ~ cond2
         SC_llr[cond2] = np.log(r0[cond2] / r_half[cond2])
         SC_llr[cond3] = np.log((alpha * r0[cond3]) / r1[cond3])
 
@@ -265,14 +266,96 @@ class Demodulation:
             plt.title(f"SNR (dB): {np.round(10*np.log10(snr_linear),3)}")
 
         return np.array(n_hat)
+    
+
+  
+
+
+
+    def exp_pdf(self, E, mu):
+        """PDF of exponential distribution with mean mu, supports numpy arrays."""
+        return (1 / mu) * np.exp(-E / mu)
+
+    def map_decoder_with_noise_vectorized(self, E0_arr, E1_arr, alpha, snr_linear, sigma_n2):
+        """
+        Vectorized MAP decoder for superposed 2-FSK messages.
+
+        Parameters:
+        -----------
+        E0_arr : np.ndarray
+            Array of observed energies at frequency 0 (shape: [N]).
+        E1_arr : np.ndarray
+            Array of observed energies at frequency 1 (shape: [N]).
+        alpha : float
+            Power fraction allocated to the weaker message (0 < a < 0.5).
+        snr_linear : float
+            Signal-to-noise ratio in dB.
+        sigma_n2 : float
+            Estimated noise power σ² from silent samples.
+
+        Returns:
+        --------
+        m1_array : np.ndarray
+            Decoded M1 bits (shape: [N]).
+        m2_array : np.ndarray
+            Decoded M2 bits (shape: [N]).
+        """
+        SNR = snr_linear
+        S = SNR * sigma_n2
+        N = len(E0_arr)
+
+        # Define all 4 (m1, m2) combinations
+        combinations = [(0, 0), (0, 1), (1, 0), (1, 1)]
+        mu_table = {
+            (0, 0): (S + sigma_n2, sigma_n2),
+            (0, 1): ((1 - alpha) * S + sigma_n2, alpha * S + sigma_n2),
+            (1, 0): (alpha * S + sigma_n2, (1 - alpha) * S + sigma_n2),
+            (1, 1): (sigma_n2, S + sigma_n2),
+        }
+
+        # Initialize array to store likelihoods for each (m1, m2)
+        likelihoods = np.zeros((len(combinations), N))
+
+        for i, (m1, m2) in enumerate(combinations):
+            mu0, mu1 = mu_table[(m1, m2)]
+            p0 = self.exp_pdf(E0_arr, mu0)
+            p1 = self.exp_pdf(E1_arr, mu1)
+            likelihoods[i] = p0 * p1
+
+        # Pick the combination with the highest likelihood for each sample
+        best_indices = np.argmax(likelihoods, axis=0)
+        m1_array = np.array([combinations[i][0] for i in best_indices])
+        m2_array = np.array([combinations[i][1] for i in best_indices])
+
+        return m1_array, m2_array
+
 
     def get_SNR(self, frame_raw, noise_raw, dB = True):
+        """
+        Compute the Signal-to-Noise Ratio (SNR) and noise power from input signals.
+
+        Parameters:
+        -----------
+        frame_raw : np.ndarray
+            The raw input signal (containing both signal and noise).
+        noise_raw : np.ndarray
+            A segment of the signal where only noise is present (no transmission).
+        dB : bool, optional
+            If True, return the SNR in decibels. If False, return the linear SNR and noise power.
+
+        Returns:
+        --------
+        float
+            If dB=True: returns the SNR in decibels (dB).
+        tuple (float, float)
+            If dB=False: returns a tuple (linear SNR, estimated noise power sigma_n²).
+        """
         x,n = self.butter(frame_raw), self.butter(noise_raw)
         snr_linear = np.mean(np.abs(x)**2)/np.mean(np.abs(n)**2)
         if dB:
             return 10*np.log10(snr_linear)
         else:
-            return snr_linear
+            return snr_linear, np.mean(np.abs(n)**2)
 
     def binary_list_to_hex(self, binary_list):
         # Ensure the length of the list is a multiple of 4
@@ -349,7 +432,7 @@ class Demodulation:
         if received_start is None or received_end is None:
             return None, None
         
-        print(received_start , received_end, cooefficient*len(postamble))
+        # print(received_start , received_end, cooefficient*len(postamble))
         return received_start + len(preamble), received_end + len(received)-(cooefficient*len(postamble))
 
     

@@ -24,13 +24,14 @@ slider_fields = {
     'LPF_CUTOFF': (1e5, 1e6, 1e4),
     'ALPHA': (0.0, 1.0, 0.01),
     'ACQ_TIME': (1.0, 10.0, 0.1),
-    'PREAMBLE_REPEAT': (1, 30, 1),
 
 }
 
 linked_pairs = {
     'TX_GAIN': 'TX_RELAY_GAIN',
-    'RX_GAIN': 'RX_RELAY_GAIN'
+    'RX_GAIN': 'RX_RELAY_GAIN',
+    'TX_RELAY_GAIN' :'TX_GAIN' ,
+    'RX_RELAY_GAIN': 'RX_GAIN'
 }
 
 class ConfigSliderEditor:

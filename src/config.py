@@ -41,6 +41,7 @@ class CONFIG:
             self.config = collection.find_one()
 
 
+        self.MongoDB_Collection_name = self.config['MongoDB_Collection_name']
 
         self.SOURCE = self.config['SOURCE']
         self.DESTINATION = self.config['DESTINATION']
@@ -50,8 +51,29 @@ class CONFIG:
         self.RX_MAX_MAGNITUDE_THRESHOLD_SCALE = self.config['RX_MAX_MAGNITUDE_THRESHOLD_SCALE']
 
         self.MAC_KEY = self.config['MAC_KEY']
-        self.MSG_SIZE = self.config['MSG_SIZE']
-        self.MAC_SIZE_ENCODED = self.config['MAC_SIZE_ENCODED']
+        self.MAC_SHA = self.config['MAC_SHA']
+
+        if self.MAC_SHA == 'sha256':
+            self.TAG_SIZE = 256
+
+        self.MAC_REP = self.config['MAC_REP']
+        self.MAC_LDPC = self.config['MAC_LDPC']
+        self.MAC_CODE_RATE = self.MAC_REP  *  self.MAC_LDPC
+        self.MSG_CODE_RATE = self.config['MSG_CODE_RATE']
+        
+        self.MAC_SIZE_ENCODED = self.TAG_SIZE/self.MAC_CODE_RATE
+        self.MSG_SIZE:float = (self.TAG_SIZE/self.MAC_CODE_RATE * self.MSG_CODE_RATE ) - self.TAG_SIZE
+
+        if self.MSG_SIZE.is_integer():
+            self.MSG_SIZE = int(self.MSG_SIZE)
+            if self.MSG_SIZE %8 == 0:
+                self.PAYLOAD = self.config['PAYLOAD'][:self.MSG_SIZE//8]
+            else:
+                raise "message size is not divisible to 8 which is necessary for char conversion"
+        else:
+            raise "Error! the combination is not producing the message size to be an intiger"
+        
+
 
         self.FREQ = self.config['FREQ']
         self.FREQ_DEV = self.config['FREQ_DEV']  
@@ -81,13 +103,12 @@ class CONFIG:
         self.PREAMBLE =  np.repeat(self.config['PREAMBLE'], self.config['PREAMBLE_REPEAT']).tolist()
         self.POSTAMBLE =  np.repeat(self.config['POSTAMBLE'], self.config['PREAMBLE_REPEAT']).tolist()
 
-        self.PAYLOAD = self.config['PAYLOAD']
-        self.MSG_CODE_RATE = self.config['MSG_CODE_RATE']
-        self.MAC_CODE_RATE = self.config['MAC_CODE_RATE']
+
+
         self.SUPERPOSED = self.config['SUPERPOSED']
         self.ALPHA = self.config['ALPHA']
 
-        self.MIN_FRAME_SIZE =((len(self.config['PAYLOAD']*8)/self.config['MSG_CODE_RATE'])+2*len(self.PREAMBLE ))* self.config['TX_SPS'] * self.config['RX_RATE']/self.config['TX_RATE']
+        self.MIN_FRAME_SIZE =((len(self.PAYLOAD*8)/self.config['MSG_CODE_RATE'])+2*len(self.PREAMBLE ))* self.config['TX_SPS'] * self.config['RX_RATE']/self.config['TX_RATE']
         self.WINDOW = int(self.config['TX_SPS'] * self.config['RX_RATE']/self.config['TX_RATE'])
 
         self._minSize = self.config['_minSize']
@@ -113,10 +134,10 @@ class CONFIG:
     def create_default_config(self):
         config = {}
 
+        config['MongoDB_Collection_name'] = "SIC_MAC"
+
         ########### APPLICATION LAYER PARAMETERS ############
-        PAYLOAD = "This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 co"
-
-
+        PAYLOAD = "This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0.This message is the default payload for the tests, and is 5504 bits long. It will be superposed with MAC tag of 256 bits with 1/45 code rate, which makes the codeword length of 11520.0."
         config['PREAMBLE'] = [1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1]
         config['POSTAMBLE'] = [1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1]
 
@@ -124,25 +145,26 @@ class CONFIG:
         config['PAYLOAD'] = PAYLOAD
 
    
+        config['MAC_SHA'] = "sha256"
 
-        
-        config['MAC_CODE_RATE'] = 1/45  
+        config['MAC_REP'] = 1/19
+        config['MAC_LDPC'] = 1/3
         config['MSG_CODE_RATE'] = 1/2
 
-        config['MSG_SIZE'] = int(256/config['MAC_CODE_RATE'] * config['MSG_CODE_RATE']) - 256
+
 
       
 
-        config['MAC_SIZE_ENCODED'] =  config['MSG_SIZE']/config['MSG_CODE_RATE'] + 256/config['MSG_CODE_RATE'] 
+
         config['SUPERPOSED'] = False
         ############## PHY LAYER PARAMETERS #################
-        config['ACQ_TIME'] = 5.0
-        config['TX_REPEAT'] = 10
+        config['ACQ_TIME'] = 2.0
+        config['TX_REPEAT'] = 3
         config['RX_MAX_MAGNITUDE_THRESHOLD_SCALE'] = 0.5
         
 
         
-        config['ALPHA'] = 0.2
+        config['ALPHA'] = 0.05
 
 
         config['MAC_KEY'] = "key"
@@ -158,11 +180,11 @@ class CONFIG:
 
         ########## USRP PARAMETERS ######################
         config['SOURCE'] = "8000169"
-        config['TX_GAIN'] = 50 
-        config['TX_PAYLOAD_POWER_SCALE'] = 0.006
+        config['TX_GAIN'] = 62 
+        config['TX_PAYLOAD_POWER_SCALE'] = 0.003
 
         config['DESTINATION'] = "8000182"
-        config['RX_GAIN'] = 30.0 
+        config['RX_GAIN'] = 20.0 
 
 
 
