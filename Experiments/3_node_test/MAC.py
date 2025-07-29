@@ -107,6 +107,16 @@ class MAC_TX_SC(MAC_TX):
                     postamble = np.concatenate([ self.conf.POSTAMBLE, [0 for _ in range(1000//self.conf.TX_SPS)]]),
                     scale = self.conf.TX_PAYLOAD_POWER_SCALE, # send the payload with half the power of the preamble
                     )
+            
+
+            # self.fsk_signal = self.tx.fsk_modulate(np.zeros_like(self.encoded_MAC), # sends with half the power,
+            #         mac = self.encoded_MAC,
+            #         alpha = self.conf.ALPHA,
+            #         sps = self.conf.TX_SPS, 
+            #         preamble = np.concatenate([ [0 for _ in range(10000//self.conf.TX_SPS)] , self.conf.PREAMBLE]), 
+            #         postamble = np.concatenate([ self.conf.POSTAMBLE, [0 for _ in range(1000//self.conf.TX_SPS)]]),
+            #         scale = self.conf.TX_PAYLOAD_POWER_SCALE, # send the payload with half the power of the preamble
+            #         )
         else:
             self.payload = src.channelCoding.encode_LDPC(self.payload, self.conf.MAC_SIZE_ENCODED)
 
@@ -308,7 +318,7 @@ class MAC_RX_SC(MAC_RX):
 
     def process_frame(self, i, phase:int = 1):
         myclient = pymongo.MongoClient(self.conf.connectionString)
-        mydb = myclient[f"{self.conf.MongoDB_Collection_name}_SC_R={np.round(self.conf.MSG_CODE_RATE,3)}".replace(".", "_")]
+        mydb = myclient[f"{self.conf.MongoDB_Collection_name}_SC_alpha_{self.conf.ALPHA}_R={np.round(self.conf.MSG_CODE_RATE,3)}".replace(".", "_")]
         collection=mydb[f'{self.ROLE}, phase_{phase}']
 
         if self.ROLE == "relay":
@@ -317,6 +327,23 @@ class MAC_RX_SC(MAC_RX):
             except:
                 return None
             
+            errors_m = np.sum(self.msg != np.array(msg_hard_decision))
+
+
+            ber_m = errors_m / len(self.msg)
+
+
+            insert = {
+                'BER_msg': ber_m,
+                'SNR': 10*np.log10(snr_lin),
+                'config': copy.deepcopy(self.conf.config)
+            }
+
+            print(f"[Frame {i}] SNR: {10*np.log10(snr_lin)}")
+            print(f"[Frame {i}] BER_m:  {np.round(ber_m,5)}")
+            return
+
+
             r0 ,r1  = rs
             r0_msg = tf.constant(r0, dtype=tf.float32)   # shape (N,)
             r1_msg = tf.constant(r1, dtype=tf.float32)
@@ -349,16 +376,19 @@ class MAC_RX_SC(MAC_RX):
                     msg_hard_decision, llr, rs, snr_lin, sigma_n2 = self.primary_process(i)
                 except:
                     return None
+
+
+
+
+
+
                 
-                r0 ,r1 = rs
-                r0_msg = tf.constant(r0, dtype=tf.float32)   # shape (N,)
-                r1_msg = tf.constant(r1, dtype=tf.float32)
-                llr_msg = tf.math.log(r0_msg / r1_msg)
-
-
-
-                msg_LDPC = src.channelCoding.decode_LDPC(codeword_llr=llr_msg, message_length=self.conf.MSG_SIZE)
-                message_str = utils.bits_to_string(msg_LDPC)
+                # r0 ,r1 = rs
+                # r0_msg = tf.constant(r0, dtype=tf.float32)   # shape (N,)
+                # r1_msg = tf.constant(r1, dtype=tf.float32)
+                # llr_msg = tf.math.log(r0_msg / r1_msg)
+                # msg_LDPC = src.channelCoding.decode_LDPC(codeword_llr=llr_msg, message_length=self.conf.MSG_SIZE)
+                # message_str = utils.bits_to_string(msg_LDPC)
 
 
 
@@ -375,6 +405,29 @@ class MAC_RX_SC(MAC_RX):
                 #############################################################
 
                 n_hat = self.demod.joint_detection(llrs= llr , snr_linear=snr_lin, plot=False)
+                errors_n = np.sum(self.tag != n_hat)
+                errors_m = np.sum(self.msg != np.array(msg_hard_decision))
+
+                ber_n = errors_n / len(n_hat)
+                ber_m = errors_m / len(n_hat)
+
+
+                insert = {
+                    'BER_tag': ber_n,
+                    'BER_msg': ber_m,
+                    'SNR': 10*np.log10(snr_lin),
+                    'config': copy.deepcopy(self.conf.config)
+                }
+
+                print(f"[Frame {i}] SNR: {10*np.log10(snr_lin)}")
+                print(f"[Frame {i}] BER_n:  {np.round(ber_n,5)}")
+                print(f"[Frame {i}] BER_m:  {np.round(ber_m,5)}")
+               
+
+                collection.insert_one(insert)
+                return
+
+
                 n_hat_llr = np.array([-2.5 if i==1 else 2.5 for i in n_hat])
                 n_hat_llr = n_hat_llr.reshape(-1,int(np.round(1/self.conf.MAC_REP))).sum(axis=1)
                 tag_LDPC =  n_hat_llr

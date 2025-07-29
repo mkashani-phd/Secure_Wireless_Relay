@@ -1,3 +1,8 @@
+import pymongo
+connectionString= "mongodb://10.29.162.146:27017/"
+
+
+
 try:
     while True:
         try:
