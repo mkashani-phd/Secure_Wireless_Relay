@@ -454,7 +454,7 @@
         <mxCell id="ryAXbrM_V8AHazh6317a-158" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;endArrow=none;endFill=0;strokeWidth=4;" edge="1" parent="1" source="ryAXbrM_V8AHazh6317a-151" target="ryAXbrM_V8AHazh6317a-155">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="ryAXbrM_V8AHazh6317a-160" value="&lt;span style=&quot;background-color: rgb(251, 251, 251);&quot;&gt;\( \&lt;/span&gt;&lt;span style=&quot;background-color: light-dark(rgb(251, 251, 251), rgb(21, 21, 21)); color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;)&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=4;fontSize=70;fontStyle=1;fontFamily=Courier New;" vertex="1" parent="1">
+        <mxCell id="ryAXbrM_V8AHazh6317a-160" value="&lt;span style=&quot;background-color: rgb(251, 251, 251);&quot;&gt;\( Cos(2\pi f_c t) \)&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=4;fontSize=70;fontStyle=1;fontFamily=Courier New;" vertex="1" parent="1">
           <mxGeometry x="6110" y="1009" width="860" height="100" as="geometry" />
         </mxCell>
       </root>
