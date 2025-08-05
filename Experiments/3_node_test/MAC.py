@@ -332,10 +332,14 @@ class MAC_RX_SC(MAC_RX):
 
             ber_m = errors_m / len(self.msg)
 
+            r0 ,r1  = rs
 
             insert = {
+                'r0': list(r0),
+                'r1': list(r1),
                 'BER_msg': ber_m,
                 'SNR': 10*np.log10(snr_lin),
+                'sigma_n2': sigma_n2,
                 'config': copy.deepcopy(self.conf.config)
             }
 
@@ -383,7 +387,7 @@ class MAC_RX_SC(MAC_RX):
 
 
                 
-                # r0 ,r1 = rs
+                r0 ,r1 = rs
                 # r0_msg = tf.constant(r0, dtype=tf.float32)   # shape (N,)
                 # r1_msg = tf.constant(r1, dtype=tf.float32)
                 # llr_msg = tf.math.log(r0_msg / r1_msg)
@@ -415,7 +419,10 @@ class MAC_RX_SC(MAC_RX):
                 insert = {
                     'BER_tag': ber_n,
                     'BER_msg': ber_m,
+                    'r0':  list(r0),
+                    'r1':  list(r1),
                     'SNR': 10*np.log10(snr_lin),
+                    'sigma_n2': sigma_n2,
                     'config': copy.deepcopy(self.conf.config)
                 }
 
