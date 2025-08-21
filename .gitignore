@@ -6,3 +6,4 @@ src/MQTT/MQTT.json
 src/MongoDB/connectionString.json
 *.iq
 *.pyc
+*.pkl
