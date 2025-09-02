@@ -1,9 +1,13 @@
 import pymongo
+import sys
+sys.path.append('../../..')
+import src.encryption_config
 connectionString= "mongodb://10.29.162.146:27017/"
 
 
 
 try:
+    enc_conf = src.encryption_config.ENC_CONFIG()
     while True:
         try:
 
@@ -19,7 +23,7 @@ try:
 
             while True:
                 phase = 1
-                tx = MAC_TX_SC(ROLE=ROLE)    
+                tx = MAC_TX_SC(ROLE=ROLE,Encryption=enc_conf)    
                 if tx.transmit():
                     print(f"transmission {ROLE}, phase_{phase} done")
                 else:

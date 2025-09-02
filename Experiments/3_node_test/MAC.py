@@ -21,6 +21,8 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
 
 import src
 import src.utils as utils
+from src import encryption_config
+import src.encryption_config
 import src.channelCoding as cc
 from typing import Optional
 
@@ -83,17 +85,35 @@ class MAC_TX_1D(MAC_TX):
         
 
 class MAC_TX_SC(MAC_TX):
-    def __init__(self, ROLE:str, conf: Optional[src.CONFIG] = None):
+    def __init__(self, ROLE:str, conf: Optional[src.CONFIG] = None, Encryption:src.encryption_config.ENC_CONFIG = None):
         super().__init__(ROLE, conf)
-
+        self._Encryption = Encryption
 
         if ROLE == "source":
             print(self.conf.MAC_SIZE_ENCODED)
 
-            self.payload = src.channelCoding.encode_LDPC(self.payload, self.conf.MAC_SIZE_ENCODED)
+            if self._Encryption is not None:
+                self.payload = src.channelCoding.encode_LDPC(utils.string_to_bits(self._Encryption.PAYLOAD), int(np.ceil(len(self.payload)/self.conf.MSG_CODE_RATE)))
+                print("Payload length", len(self.payload))
+                hex_rand, _ = src.AESCTRAligned.get_range(
+                                                            key = bytes.fromhex(self._Encryption.KEY),
+                                                            iv = bytes.fromhex(self._Encryption.IV),
+                                                            chunk_bits=len(self.payload),
+                                                            index=self._Encryption.COUNTER,
+                                                            return_int=False)
+                
+                
+                self._Encryption.update_config(['COUNTER', self._Encryption.COUNTER+1])
+                self.encoded_MAC = utils.hex_to_bits(hex_rand.hex())
 
-            self.encoded_MAC = src.channelCoding.encode_LDPC(self.MAC_bits, int(len(self.MAC_bits)/self.conf.MAC_LDPC))
-            self.encoded_MAC = np.repeat(self.encoded_MAC, 1/self.conf.MAC_REP)
+
+
+            else:
+
+                self.payload = src.channelCoding.encode_LDPC(self.payload, self.conf.MAC_SIZE_ENCODED)
+
+                self.encoded_MAC = src.channelCoding.encode_LDPC(self.MAC_bits, int(len(self.MAC_bits)/self.conf.MAC_LDPC))
+                self.encoded_MAC = np.repeat(self.encoded_MAC, 1/self.conf.MAC_REP)
             
 
             if len(self.payload) != len(self.encoded_MAC):
@@ -101,12 +121,14 @@ class MAC_TX_SC(MAC_TX):
             
             self.fsk_signal = self.tx.fsk_modulate(self.payload, # sends with half the power,
                     mac = self.encoded_MAC,
-                    alpha = self.conf.ALPHA,
+                    alpha = self.conf.ALPHA if self._Encryption is None else 0.5,
                     sps = self.conf.TX_SPS, 
                     preamble = np.concatenate([ [0 for _ in range(10000//self.conf.TX_SPS)] , self.conf.PREAMBLE]), 
                     postamble = np.concatenate([ self.conf.POSTAMBLE, [0 for _ in range(1000//self.conf.TX_SPS)]]),
                     scale = self.conf.TX_PAYLOAD_POWER_SCALE, # send the payload with half the power of the preamble
                     )
+            
+
             
 
             # self.fsk_signal = self.tx.fsk_modulate(np.zeros_like(self.encoded_MAC), # sends with half the power,
@@ -303,6 +325,7 @@ class MAC_RX_1D(MAC_RX):
 class MAC_RX_SC(MAC_RX):
     def __init__(self, ROLE:str, conf: Optional[src.CONFIG] = None):
         super().__init__(ROLE, conf)
+        self.enc_conf = src.encryption_config.ENC_CONFIG()
 
         m = utils.string_to_bits(self.conf.PAYLOAD)
         self.msg = src.channelCoding.encode_LDPC(m,self.conf.MAC_SIZE_ENCODED)
@@ -318,7 +341,7 @@ class MAC_RX_SC(MAC_RX):
 
     def process_frame(self, i, phase:int = 1):
         myclient = pymongo.MongoClient(self.conf.connectionString)
-        mydb = myclient[f"{self.conf.MongoDB_Collection_name}_SC_alpha_{self.conf.ALPHA}_R={np.round(self.conf.MSG_CODE_RATE,3)}".replace(".", "_")]
+        mydb = myclient[f"{self.conf.MongoDB_Collection_name}_SC_alpha_{self.conf.ALPHA}_R={np.round(self.conf.MSG_CODE_RATE,3)}_Encryption".replace(".", "_")]
         collection=mydb[f'{self.ROLE}, phase_{phase}']
 
         if self.ROLE == "relay":
@@ -327,24 +350,29 @@ class MAC_RX_SC(MAC_RX):
             except:
                 return None
             
-            errors_m = np.sum(self.msg != np.array(msg_hard_decision))
+            # errors_m = np.sum(self.msg != np.array(msg_hard_decision))
 
 
-            ber_m = errors_m / len(self.msg)
+            # ber_m = errors_m / len(self.msg)
 
             r0 ,r1  = rs
 
             insert = {
+                'time_stamp': time.time(),
                 'r0': list(r0),
                 'r1': list(r1),
-                'BER_msg': ber_m,
+                # 'BER_msg': ber_m,
                 'SNR': 10*np.log10(snr_lin),
                 'sigma_n2': sigma_n2,
-                'config': copy.deepcopy(self.conf.config)
+                'config': copy.deepcopy(self.conf.config),
+                'enc_conf': copy.deepcopy(self.enc_conf.enc_config),
             }
 
             print(f"[Frame {i}] SNR: {10*np.log10(snr_lin)}")
-            print(f"[Frame {i}] BER_m:  {np.round(ber_m,5)}")
+            print(f"[Frame {i}] ENC COUNTER: {self.enc_conf.COUNTER}")
+
+            # print(f"[Frame {i}] BER_m:  {np.round(ber_m,5)}")
+            collection.insert_one(insert)
             return
 
 
@@ -409,26 +437,29 @@ class MAC_RX_SC(MAC_RX):
                 #############################################################
 
                 n_hat = self.demod.joint_detection(llrs= llr , snr_linear=snr_lin, plot=False)
-                errors_n = np.sum(self.tag != n_hat)
-                errors_m = np.sum(self.msg != np.array(msg_hard_decision))
+                # errors_n = np.sum(self.tag != n_hat)
+                # errors_m = np.sum(self.msg != np.array(msg_hard_decision))
 
-                ber_n = errors_n / len(n_hat)
-                ber_m = errors_m / len(n_hat)
+                # ber_n = errors_n / len(n_hat)
+                # ber_m = errors_m / len(n_hat)
 
 
                 insert = {
-                    'BER_tag': ber_n,
-                    'BER_msg': ber_m,
+                    'time_stamp': time.time(),
+                    'BER_tag': 0,
+                    'BER_msg': 0,
                     'r0':  list(r0),
                     'r1':  list(r1),
                     'SNR': 10*np.log10(snr_lin),
                     'sigma_n2': sigma_n2,
-                    'config': copy.deepcopy(self.conf.config)
+                    'config': copy.deepcopy(self.conf.config),
+                    'enc_conf': copy.deepcopy(self.enc_conf.enc_config)
                 }
 
                 print(f"[Frame {i}] SNR: {10*np.log10(snr_lin)}")
-                print(f"[Frame {i}] BER_n:  {np.round(ber_n,5)}")
-                print(f"[Frame {i}] BER_m:  {np.round(ber_m,5)}")
+                # print(f"[Frame {i}] BER_n:  {np.round(ber_n,5)}")
+                # print(f"[Frame {i}] BER_m:  {np.round(ber_m,5)}")
+                print(f"[Frame {i}] ENC_COUNTER: {self.enc_conf.COUNTER}")
                
 
                 collection.insert_one(insert)
