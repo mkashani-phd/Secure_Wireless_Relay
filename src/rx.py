@@ -120,8 +120,12 @@ class RX:
 class Demodulation:
     def __init__(self, conf = None):
         self.conf =  config.CONFIG() if conf is None else conf
-        self.fltr = scipy.signal.butter(30, self.conf.LPF_CUTOFF, 'low', analog=False, output='sos',fs=self.conf.RX_RATE)
-
+        try:
+            self.fltr = scipy.signal.butter(30, self.conf.LPF_CUTOFF, 'low', analog=False, output='sos',fs=self.conf.RX_RATE)
+        except:
+            print("Warning: LPF filter could not be created. Check the RX_RATE and LPF_CUTOFF values in the config file.")
+            self.fltr = None
+            
 
         
     def butter(self,input):
