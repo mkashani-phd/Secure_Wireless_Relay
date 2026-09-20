@@ -1,0 +1,38 @@
+\documentclass[border=8pt]{standalone}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc}
+\begin{document}
+\begin{tikzpicture}[
+    node distance=7mm and 10mm,
+    box/.style={draw, rounded corners, minimum height=8mm, minimum width=64mm, align=center, font=\small, fill=white},
+    small/.style={font=\scriptsize},
+    >=Stealth
+]
+
+\node[box, fill=gray!10] (mqtt) {MQTT ready/begin handshake\\(coarse: get all nodes armed within $\sim$100\,ms)};
+\node[box, below=of mqtt] (record) {\texttt{RX.record()}: continuous USRP streaming\\$\to$ raw IQ file (\texttt{.iq})};
+\node[box, below=of record, fill=orange!10] (finder) {\texttt{frameFinder()}: 4-symbol batches,\\amplitude-threshold state machine\\(rising/falling edge $\to$ candidate frame)};
+\node[box, below=of finder] (fft) {\texttt{decode()}: whole-frame FFT\\$\to$ estimate the two tone bins};
+\node[box, below=of fft] (offset) {\texttt{find\_best\_offset()}: search symbol-timing\\offset within the preamble window};
+\node[box, below=of offset, fill=blue!8] (demod) {per symbol: correlate against $\pm$\texttt{FREQ\_DEV}\\$\to E_0, E_1 \to$ LLR $=\log(E_1/E_0)$, hard decision};
+\node[box, below=of demod, fill=orange!10] (boundaries) {\texttt{detect\_message\_indices()}: repetition-code\\majority-vote match of preamble/postamble\\$\to$ precise start/end symbol index};
+\node[box, below=of boundaries] (slice) {slice \texttt{r0}, \texttt{r1}, LLR, hard decision\\to the message window};
+\node[box, below=of slice] (snr) {\texttt{get\_SNR()}: signal power (frame) vs.\\noise power (separate silent segment)};
+\node[box, below=of snr, fill=gray!10] (log) {log to MongoDB $\to$ export to HDF5};
+
+\draw[->] (mqtt) -- (record);
+\draw[->] (record) -- (finder);
+\draw[->] (finder) -- (fft);
+\draw[->] (fft) -- (offset);
+\draw[->] (offset) -- (demod);
+\draw[->] (demod) -- (boundaries);
+\draw[->] (boundaries) -- (slice);
+\draw[->] (slice) -- (snr);
+\draw[->] (snr) -- (log);
+
+\node[small, right=3mm of finder, align=left, text width=42mm] {coarse boundary:\\ preamble/postamble sent at\\ full power, message+tag at\\ reduced power $\to$ HIGH-LOW-HIGH\\ amplitude envelope};
+
+\node[small, right=3mm of boundaries, align=left, text width=42mm] {fine boundary:\\ exact bit-level start/end,\\ robust to noise via majority\\ vote over the repetition code};
+
+\end{tikzpicture}
+\end{document}
